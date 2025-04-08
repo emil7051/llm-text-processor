@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  llm-text-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/data
+    # Override the default command to process all files in the /data/input directory
+    # and output to the /data/output directory
+    command: /data/input /data/output
