@@ -35,6 +35,7 @@ setup(
     entry_points={
         "console_scripts": [
             "llm-preprocess=llm_text_processor.cli:main",
+            "textcleaner=llm_text_processor.cli:main",
         ],
     },
     classifiers=[
