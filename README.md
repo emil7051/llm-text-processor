@@ -30,6 +30,21 @@ This tool converts files from various formats (PDF, Office documents, web conten
 
 ## Installation
 
+### Using Homebrew (macOS)
+
+Install with the snappier name `textcleaner`:
+
+```bash
+# Add the tap
+brew tap emil7051/textcleaner https://github.com/emil7051/llm-text-processor
+
+# Install
+brew install textcleaner
+
+# Use the tool with the simple command
+textcleaner process myfile.pdf
+```
+
 ### Using pip
 
 ```bash
