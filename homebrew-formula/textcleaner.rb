@@ -4,7 +4,7 @@ class Textcleaner < Formula
   desc "Text cleaning tool for LLM processing"
   homepage "https://github.com/emil7051/textcleaner"
   url "https://github.com/emil7051/textcleaner/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "TBD" # Will be updated when we create the release
+  sha256 "TBD" # Will be updated when you create the release
   license "MIT"
   head "https://github.com/emil7051/textcleaner.git", branch: "main"
 
@@ -36,7 +36,7 @@ class Textcleaner < Formula
     # Create a wrapper script to invoke the CLI
     (bin/"textcleaner").write <<~EOS
       #!/bin/bash
-      "#{libexec}/bin/python" -m textcleaner.cli "$@"
+      exec "#{libexec}/bin/python" -m textcleaner.cli "$@"
     EOS
   end
 
