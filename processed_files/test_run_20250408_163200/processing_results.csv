@@ -1,0 +1,6 @@
+filename,file_type,success,error,input_size_bytes,output_size_bytes,size_reduction_percent,token_reduction_percent,processing_time_seconds,output_path
+Backup-codes-ed.miller.txt,.txt,False,'TextConverter' object has no attribute 'convert_to_text',388,0,0.00%,N/A,N/A,
+pie-chart.txt,.txt,False,'TextConverter' object has no attribute 'convert_to_text',1579,0,0.00%,N/A,N/A,
+repomix-output-https_--github.com-emil7051-kerbside_charger_model-.md,.md,False,'MarkdownConverter' object has no attribute 'convert_to_text',86585,0,0.00%,N/A,N/A,
+stripe_backup_code.txt,.txt,False,'TextConverter' object has no attribute 'convert_to_text',24,0,0.00%,N/A,N/A,
+app-component (1).txt,.txt,False,'TextConverter' object has no attribute 'convert_to_text',3285,0,0.00%,N/A,N/A,

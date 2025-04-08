@@ -1,0 +1,56 @@
+import React from 'react';
+
+const PieChart = ({ data }) => {
+ // Basic pie chart implementation without dependencies
+ // In a real app, you'd use a library like Chart.js
+
+ if (!data || data.length === 0) {
+ return <div className="p-4 text-center text-gray-500">No data available</div>;
+ }
+
+ // Sort by value (descending)
+ const sortedData = [...data].sort((a, b) => b.value - a.value);
+
+ // Get total for percentage calculation
+ const total = sortedData.reduce((sum, item) => sum + item.value, 0);
+
+ // Colors for the chart
+ const colors = [
+ 'bg-blue-500',
+ 'bg-green-500',
+ 'bg-yellow-500',
+ 'bg-red-500',
+ 'bg-purple-500',
+ 'bg-pink-500',
+ 'bg-indigo-500',
+ 'bg-gray-500'
+ ];
+
+ return (
+ <div>
+ <div className="h-64 flex items-center justify-center mb-4">
+ <div className="text-center">
+ <p className="text-sm text-gray-500">
+ Hover over items below to see details
+ </p>
+ </div>
+ </div>
+
+ <div>
+ {sortedData.map((item, index) => {
+ const percentage = ((item.value / total) * 100).toFixed(1);
+
+ return (
+ <div key={item.name} className="flex items-center mb-2">
+ <div className={`w-4 h-4 ${colors[index % colors.length]} mr-2`}></div>
+ <div className="flex-1 text-sm truncate">{item.name}</div>
+ <div className="text-sm">${item.value.toLocaleString()} ({percentage}%)</div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ );
+};
+
+export default PieChart;

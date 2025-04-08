@@ -1,0 +1,92 @@
+# Default configuration for LLM Text Processor
+
+# General settings
+general:
+  output_dir: "processed_files"
+  overwrite_existing: false
+  preserve_original_filename: true
+  file_extension_mapping:
+    markdown: "md"
+    plain_text: "txt"
+    json: "json"
+    csv: "csv"
+
+# Processing settings
+processing:
+  cleaning_level: "standard"  # Options: minimal, standard, aggressive
+  parallel_processing: true
+  max_workers: 4
+  timeout_seconds: 300  # 5 minutes per file
+
+# Structure preservation settings
+structure:
+  preserve_headings: true
+  preserve_lists: true
+  preserve_tables: true
+  preserve_images: false  # Just descriptions, not the images themselves
+  preserve_links: true
+  preserve_emphasis: true
+  preserve_code_blocks: true
+  preserve_footnotes: true
+
+# Content cleaning settings
+cleaning:
+  remove_headers_footers: true
+  remove_page_numbers: true
+  remove_watermarks: true
+  clean_whitespace: true
+  normalize_unicode: true
+  remove_boilerplate: true
+  remove_duplicate_content: true
+  remove_irrelevant_metadata: true
+  
+# Token optimization settings
+optimization:
+  abbreviate_common_terms: false
+  simplify_citations: true
+  simplify_references: true
+  simplify_urls: false
+  max_line_length: 80
+  
+# Format-specific settings
+formats:
+  pdf:
+    extract_images: false
+    ocr_on_images: false
+    detect_columns: true
+    handle_tables: true
+    min_line_length: 10
+    heading_detection_sensitivity: 0.7
+    
+  office:
+    extract_comments: false
+    extract_tracked_changes: false
+    extract_hidden_content: false
+    max_excel_rows: 1000
+    max_excel_cols: 20
+    
+  web:
+    remove_navigation: true
+    remove_ads: true
+    extract_main_content: true
+    follow_links: false
+    javascript_rendering: false
+    
+  text:
+    detect_paragraphs: true
+    detect_code_blocks: true
+    respect_line_breaks: true
+
+# Output format settings
+output:
+  default_format: "markdown"  # Options: markdown, plain_text, json, csv
+  include_metadata: true
+  include_conversion_stats: true
+  include_toc: true
+  
+# Metrics and reporting
+metrics:
+  estimate_token_count: true
+  calculate_reduction_ratio: true
+  log_level: "info"  # Options: debug, info, warning, error
+  generate_report: true

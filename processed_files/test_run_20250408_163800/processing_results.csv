@@ -1,0 +1,6 @@
+filename,file_type,success,error,input_size_bytes,output_size_bytes,size_reduction_percent,token_reduction_percent,processing_time_seconds,output_path
+Backup-codes-ed.miller.txt,.txt,True,,388,385,0.77%,-2.67%,0.00,processed_files/test_run_20250408_163800/Backup-codes-ed.miller_processed.txt
+pie-chart.txt,.txt,True,,1579,1552,1.71%,1.71%,0.00,processed_files/test_run_20250408_163800/pie-chart_processed.txt
+repomix-output-https_--github.com-emil7051-kerbside_charger_model-.md,.md,True,,86585,84585,2.31%,2.31%,0.00,processed_files/test_run_20250408_163800/repomix-output-https_--github.com-emil7051-kerbside_charger_model-_processed.txt
+stripe_backup_code.txt,.txt,True,,24,24,0.00%,0.00%,0.00,processed_files/test_run_20250408_163800/stripe_backup_code_processed.txt
+app-component (1).txt,.txt,True,,3285,3238,1.43%,1.43%,0.00,processed_files/test_run_20250408_163800/app-component (1)_processed.txt

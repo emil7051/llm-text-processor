@@ -1,0 +1,16 @@
+Parameter,Typical Value,Reasonable Range,Usage in Model
+Vessel Lifespan (years),25,20 - 30,Used to annualize CAPEX and OPEX over vessel lifetime.
+Discount Rate (%),7,4 - 10,Discounts future cash flows in NPV calculations.
+Fuel Prices (AUD/GJ),30 - 120,30 - 150,Determines OPEX fuel costs; scenario input for TCO.
+Battery Cost (AUD/kWh),200,100 - 300,Affects initial CAPEX and replacement CAPEX over life.
+Fuel Cell System Cost (AUD/kW),1500,1000 - 2000,Used in calculating CAPEX for H₂ fuel cell vessels.
+Electricity Price at Port (AUD/MWh),100,50 - 200,Determines shore power OPEX; varies by TOU usage.
+Ammonia Engine CAPEX Premium (%),20,10 - 30,Adds % premium to base ship CAPEX for ammonia systems.
+Methanol Engine CAPEX Premium (%),10,5 - 20,Adds % premium to base ship CAPEX for methanol systems.
+Battery Replacement Interval (years),8,5 - 10,Used to schedule and sum replacement CAPEX in lifecycle.
+Crew Costs (AUD/year),"2,000,000 (domestic) / 1,000,000 (international)",1.5M - 3M (domestic),Forms part of OPEX; higher for Australian domestic crew.
+Port Infrastructure Cost (Shore Power) (AUD/berth),60000000,40M - 80M,Contributes to shore power scenario infrastructure cost.
+Annual Days at Sea,300,250 - 330,Used to estimate annual fuel use and OPEX.
+Fuel Consumption (tonnes/day),30,20 - 40,Determines daily fuel OPEX based on fuel type.
+Carbon Price (AUD/ton CO₂),0 - 100,0 - 150,Adds GHGEX to OPEX or separates as policy scenario.
+Residual Value (% of CAPEX),10,0 - 15,Used to compute end-of-life salvage value for NPV.

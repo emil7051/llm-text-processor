@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "textcleaner"
+version = "0.1.0"
+description = "A tool for converting various file formats to clean, LLM-friendly text"
+readme = "README.md"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "PyPDF2>=2.0.0",
+    "pdfminer.six>=20220524",
+    "python-docx>=0.8.11",
+    "openpyxl>=3.0.10",
+    "python-pptx>=0.6.21",
+    "pandas>=1.5.0",
+    "beautifulsoup4>=4.11.1",
+    "html2text>=2020.1.16",
+    "nltk>=3.7",
+    "pyyaml>=6.0",
+    "tqdm>=4.64.1",
+]
+
+[project.scripts]
+textcleaner = "textcleaner.cli:main"
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
