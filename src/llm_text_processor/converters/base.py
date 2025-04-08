@@ -96,6 +96,25 @@ class ConverterRegistry:
         """
         self.config = config or ConfigManager()
         self.converters: List[BaseConverter] = []
+    
+    def register(self, converter: BaseConverter) -> None:
+        """Register an instantiated converter.
+        
+        Args:
+            converter: Converter instance to register. Must be an instance of BaseConverter.
+            
+        Raises:
+            TypeError: If converter is not an instance of BaseConverter.
+        """
+        if not isinstance(converter, BaseConverter):
+            raise TypeError("Converter must be an instance of BaseConverter")
+            
+        # Add to registry
+        self.converters.append(converter)
+        
+        # Set config if available
+        if self.config:
+            converter.config = self.config
         
     def register_converter(self, converter_class: type) -> None:
         """Register a converter class.
@@ -112,6 +131,18 @@ class ConverterRegistry:
         # Create instance and add to registry
         converter = converter_class(self.config)
         self.converters.append(converter)
+    
+    def set_config(self, config: ConfigManager) -> None:
+        """Set the configuration for all registered converters.
+        
+        Args:
+            config: Configuration manager instance to use.
+        """
+        self.config = config
+        
+        # Update the config for all existing converters
+        for converter in self.converters:
+            converter.config = config
         
     def find_converter(self, file_path: Union[str, Path]) -> Optional[BaseConverter]:
         """Find a converter that can handle the given file.

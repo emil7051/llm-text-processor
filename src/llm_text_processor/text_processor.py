@@ -77,16 +77,13 @@ class TextProcessor:
         Returns:
             Configured converter registry.
         """
-        from llm_text_processor.converters.pdf_converter import PDFConverter
-        from llm_text_processor.converters.office_converter import OfficeConverter
+        from llm_text_processor.converters import register_converters
         
-        registry = ConverterRegistry(self.config)
+        # Use our centralized registry initialization
+        registry = register_converters()
         
-        # Register all available converters
-        registry.register_converter(PDFConverter)
-        registry.register_converter(OfficeConverter)
-        
-        # Add more converters as they become available
+        # Set the configuration for all converters
+        registry.set_config(self.config)
         
         return registry
         
