@@ -54,18 +54,19 @@ class TestConfigManager(unittest.TestCase):
     
     def test_get_config_with_defaults(self):
         """Test getting configuration with defaults"""
-        # Load our test config
-        self.config_manager.load_config(self.config_file)
+        # Load our test config and manually merge it
+        test_config = self.config_manager._load_from_file(self.config_file)
+        self.config_manager._merge_config(test_config)
         
         # Test that values from the file are used
         self.assertEqual(
-            self.config_manager.get_config("processing.clean_level"), 
+            self.config_manager.get("processing.clean_level"), 
             "standard"
         )
         
         # Test that a default value is used for a non-existent key
         self.assertEqual(
-            self.config_manager.get_config("non_existent", "default_value"), 
+            self.config_manager.get("non_existent", "default_value"), 
             "default_value"
         )
     
@@ -90,17 +91,20 @@ class TestConfigManager(unittest.TestCase):
             }
         }
         
-        merged = self.config_manager._merge_configs(base_config, override_config)
+        # Create a new config manager for testing merge
+        test_manager = ConfigManager()
+        test_manager.config = base_config.copy()
+        test_manager._merge_config(override_config)
         
         # Check that values are properly overridden
-        self.assertEqual(merged["processing"]["clean_level"], "aggressive")
+        self.assertEqual(test_manager.config["processing"]["clean_level"], "aggressive")
         
         # Check that non-overridden values remain
-        self.assertTrue(merged["processing"]["preserve_structure"])
-        self.assertEqual(merged["output"]["default_format"], "text")
+        self.assertTrue(test_manager.config["processing"]["preserve_structure"])
+        self.assertEqual(test_manager.config["output"]["default_format"], "text")
         
         # Check that new sections are added
-        self.assertEqual(merged["new_section"]["new_key"], "new_value")
+        self.assertEqual(test_manager.config["new_section"]["new_key"], "new_value")
 
 
 if __name__ == "__main__":

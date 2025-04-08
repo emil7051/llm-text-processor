@@ -90,7 +90,7 @@ def test_process_file_success(processor, mock_components, temp_directory):
     mock_components["converter_registry"].find_converter.assert_called_once_with(input_file)
     mock_converter.convert.assert_called_once_with(input_file)
     mock_components["processor_pipeline"].process.assert_called_once()
-    mock_components["output_manager"].write_output.assert_called_once()
+    mock_components["output_manager"].write.assert_called_once()
 
 
 def test_process_file_no_converter(processor, mock_components, temp_directory):
@@ -113,7 +113,7 @@ def test_process_file_no_converter(processor, mock_components, temp_directory):
     # Verify component interactions
     mock_components["converter_registry"].find_converter.assert_called_once_with(input_file)
     mock_components["processor_pipeline"].process.assert_not_called()
-    mock_components["output_manager"].write_output.assert_not_called()
+    mock_components["output_manager"].write.assert_not_called()
 
 
 def test_process_file_security_validation(processor, mock_components, temp_directory):
@@ -135,7 +135,7 @@ def test_process_file_security_validation(processor, mock_components, temp_direc
     # Verify component interactions
     mock_components["converter_registry"].find_converter.assert_not_called()
     mock_components["processor_pipeline"].process.assert_not_called()
-    mock_components["output_manager"].write_output.assert_not_called()
+    mock_components["output_manager"].write.assert_not_called()
 
 
 def test_process_file_converter_exception(processor, mock_components, temp_directory):
@@ -160,7 +160,7 @@ def test_process_file_converter_exception(processor, mock_components, temp_direc
     mock_components["converter_registry"].find_converter.assert_called_once_with(input_file)
     mock_converter.convert.assert_called_once_with(input_file)
     mock_components["processor_pipeline"].process.assert_not_called()
-    mock_components["output_manager"].write_output.assert_not_called()
+    mock_components["output_manager"].write.assert_not_called()
 
 
 @patch('textcleaner.utils.parallel.ParallelProcessor')

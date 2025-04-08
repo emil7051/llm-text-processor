@@ -35,7 +35,7 @@ class ConfigFactory:
         if config_path:
             # Load from file
             self.logger.info(f"Loading configuration from {config_path}")
-            config = ConfigManager(config_file=config_path)
+            config = ConfigManager(config_path=config_path)
         else:
             # Create default config based on specified type
             self.logger.info(f"Creating {config_type} configuration")

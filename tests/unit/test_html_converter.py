@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 import pytest
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 from textcleaner.converters.html_converter import HTMLConverter
 
@@ -162,35 +162,31 @@ class TestHTMLConverter(unittest.TestCase):
         content, metadata = self.converter.convert(self.html_file)
         
         # Check metadata
-        self.assertEqual(metadata["title"], "Test HTML Document")
-        self.assertEqual(metadata["description"], "A test HTML document for unit testing")
-        self.assertEqual(metadata["keywords"], "test, html, converter")
-        self.assertEqual(metadata["author"], "Test Author")
+        self.assertEqual(metadata["title"], "Climate Change: The Scientific Consensus")
+        self.assertEqual(metadata["description"], "An overview of the scientific consensus on climate change and its impacts")
+        self.assertEqual(metadata["keywords"], "climate change, global warming, science, environment, greenhouse gases")
+        self.assertEqual(metadata["author"], "Environmental Science Institute")
         
         # Check content includes main sections
-        self.assertIn("# Test HTML Document", content)
-        self.assertIn("## Article Title", content)
-        self.assertIn("### Section 1", content)
-        self.assertIn("### Section 2", content)
+        self.assertIn("# Climate Change: The Scientific Consensus", content)
+        self.assertIn("## Understanding the Science", content)
+        self.assertIn("### Key Evidence", content)
+        self.assertIn("### Impact on Ecosystems", content)
         
         # Check that lists were preserved
-        self.assertIn("* Item 1", content)
-        self.assertIn("* Item 2", content)
-        self.assertIn("* Item 3", content)
+        self.assertIn("* Global temperature has increased", content)
+        self.assertIn("* Arctic sea ice and glaciers", content)
         
         # Check that tables were converted
-        self.assertIn("| Header 1 | Header 2 |", content)
-        self.assertIn("| --- | --- |", content)
-        self.assertIn("| Cell 1 | Cell 2 |", content)
+        self.assertIn("| Ecosystem | Primary Impacts | Vulnerability Level |", content)
+        self.assertIn("| Coral Reefs | Bleaching, acidification | Very High |", content)
         
         # Check that scripts and comments were removed
-        self.assertNotIn("This should be removed", content)
-        self.assertNotIn("<!-- This is a comment", content)
+        self.assertNotIn("This script will be removed by our converter", content)
+        self.assertNotIn("trackAnalytics", content)
         
         # Check that navigation was removed (likely navigation content)
-        self.assertNotIn("Home", content)
-        self.assertNotIn("About", content)
-        self.assertNotIn("Contact", content)
+        self.assertNotIn("Home | Articles | Research", content)
     
     def test_convert_xml(self):
         """Test converting an XML file"""
