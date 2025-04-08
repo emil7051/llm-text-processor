@@ -15,9 +15,12 @@ This tool converts files from various formats (PDF, Office documents, web conten
 
 ## Features
 
-- **Multiple Format Support**: Handles PDFs, Office documents, web content, plain text files, and more
+- **Expanded Format Support**: Now with enhanced support for HTML, XML, Markdown, and plain text files in addition to PDFs and Office documents
+- **HTML/XML Processing**: Intelligent extraction from HTML/XML with structure preservation and automatic cleaning of scripts, styles, and comments
+- **Markdown Handling**: Process Markdown files with frontmatter extraction and preservation of formatting
 - **Intelligent Cleaning**: Removes headers, footers, boilerplate content, and redundant information
 - **Structure Preservation**: Maintains document hierarchy, lists, tables, and other semantic elements
+- **Comprehensive Logging**: Detailed logging throughout the application with configurable log levels
 - **Configurable Processing**: Adjustable cleaning levels from minimal to aggressive
 - **Multiple Output Formats**: Export as plain text, Markdown, structured JSON, or CSV
 - **Batch Processing**: Process entire directories of files with consistent settings
@@ -70,8 +73,12 @@ result = processor.process_file("document.pdf", output_format="markdown")
 print(f"Output saved to: {result.output_path}")
 print(f"Token reduction: {result.metrics.token_reduction_percent}%")
 
-# Process a directory
-results = processor.process_directory("documents/", output_format="json")
+# Process HTML content
+result = processor.process_file("webpage.html", output_format="markdown")
+print(f"Extracted {result.metrics.get('raw_character_count', 0)} characters")
+
+# Process a directory containing mixed file types
+results = processor.process_directory("documents/", output_format="markdown")
 print(f"Processed {len(results)} files")
 ```
 
@@ -79,13 +86,13 @@ print(f"Processed {len(results)} files")
 
 ```bash
 # Process a single file
-llm-preprocess input.pdf output.md
+python -m llm_text_processor.cli process input.pdf output.md
 
-# Process with specific configuration
-llm-preprocess --config my_config.yaml input.docx output.json
+# Process with specific configuration and logging
+python -m llm_text_processor.cli --log-level DEBUG --log-file processing.log process --config my_config.yaml input.docx output.json
 
 # Process a directory
-llm-preprocess --batch --output-dir clean_texts/ documents/
+python -m llm_text_processor.cli process --format markdown documents/
 ```
 
 ## Development
@@ -97,6 +104,27 @@ llm-preprocess --batch --output-dir clean_texts/ documents/
   - Tesseract OCR (optional, for image-based PDFs)
   - LibreOffice (optional, for advanced Office document handling)
   - Poppler-utils (for PDF processing)
+  - lxml (for XML processing with proper features)
+
+### Testing
+
+The project includes extensive tests for all supported file types. Run the tests with:
+
+```bash
+python -m pytest
+```
+
+For more verbose test output:
+
+```bash
+python -m pytest -v
+```
+
+To run specific tests:
+
+```bash
+python -m pytest tests/integration/test_all_file_types.py -v
+```
 
 ### Project Structure
 
@@ -104,21 +132,37 @@ llm-preprocess --batch --output-dir clean_texts/ documents/
 llm-text-processor/
 ├── src/llm_text_processor/      # Main package directory
 │   ├── converters/              # File format converters
+│   │   ├── base.py             # Base converter class and registry
+│   │   ├── html_converter.py   # HTML/XML document converter
+│   │   ├── text_converter.py   # Plain text document converter
+│   │   ├── markdown_converter.py # Markdown document converter with frontmatter support
+│   │   └── ...                 # Other format converters
 │   ├── processors/              # Text processing components
 │   ├── outputs/                 # Output format writers
-│   ├── config/                  # Configuration management
-│   └── utils/                   # Utility functions
-├── data/                        # Sample data files
-│   ├── input/                   # Input files for testing
-│   └── output/                  # Output directory for processed files
-├── docker/                      # Docker configuration files
+│   ├── config/                  # Configuration management 
+│   │   └── config_manager.py   # Configuration loading and access
+│   ├── utils/                   # Utility functions
+│   ├── text_processor.py        # Main processor orchestration
+│   └── cli.py                   # Command line interface
 ├── tests/                       # Test suite
+│   ├── unit/                    # Unit tests for individual components
+│   └── integration/             # Integration tests across file types
+│       └── test_all_file_types.py # Tests for all supported formats
+├── test_html_files/             # Test files for HTML/XML processing
+├── processed_files/             # Output directory for processed files
 └── docs/                        # Documentation
 ```
 
 ### Example Results
 
-The tool converts various document formats into clean, structured text. For example, converting a PDF document with complex formatting will result in a clean Markdown file that preserves the document's structure while optimizing for token usage.
+The tool converts various document formats into clean, structured text:
+
+- **HTML/XML** documents are cleaned of scripts, styles, and comments while preserving semantic structure
+- **Markdown** files maintain their formatting while extracting metadata from frontmatter
+- **Plain text** files are processed with minimal transformation while preserving content
+- **PDF** documents with complex formatting result in clean Markdown that preserves structure while optimizing for token usage
+
+All conversions include rich metadata extraction for downstream processing and analysis.
 
 ## Docker Containerization
 

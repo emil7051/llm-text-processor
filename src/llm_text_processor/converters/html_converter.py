@@ -36,12 +36,12 @@ class HTMLConverter(BaseConverter):
         self.supported_extensions = [".html", ".htm", ".xhtml", ".xml"]
         
         # Configure parsing options from config
-        self.parser = self.config.get_config("converters.html.parser", "html.parser")
-        self.remove_comments = self.config.get_config("converters.html.remove_comments", True)
-        self.remove_scripts = self.config.get_config("converters.html.remove_scripts", True)
-        self.remove_styles = self.config.get_config("converters.html.remove_styles", True)
-        self.extract_metadata = self.config.get_config("converters.html.extract_metadata", True)
-        self.preserve_links = self.config.get_config("converters.html.preserve_links", True)
+        self.parser = self.config.get("converters.html.parser", "html.parser")
+        self.remove_comments = self.config.get("converters.html.remove_comments", True)
+        self.remove_scripts = self.config.get("converters.html.remove_scripts", True)
+        self.remove_styles = self.config.get("converters.html.remove_styles", True)
+        self.extract_metadata = self.config.get("converters.html.extract_metadata", True)
+        self.preserve_links = self.config.get("converters.html.preserve_links", True)
         
         # Elements that should be treated as block-level (surrounded by newlines)
         self.block_elements = {
@@ -102,7 +102,24 @@ class HTMLConverter(BaseConverter):
             filename = os.path.basename(path_str)
         
         # Parse the HTML/XML content
-        soup = BeautifulSoup(content, self.parser)
+        # Select appropriate parser based on file extension
+        if file_path.suffix.lower() == '.xml':
+            # Use XML parser for XML files
+            from bs4 import XMLParsedAsHTMLWarning
+            import warnings
+            
+            # Filter out the warning for XML parsed as HTML
+            warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+            
+            # Try to use lxml's XML parser if available, otherwise fall back to html.parser
+            try:
+                soup = BeautifulSoup(content, features="xml")
+            except Exception:
+                # Fall back to default parser
+                soup = BeautifulSoup(content, self.parser)
+        else:
+            # Use configured HTML parser for HTML files
+            soup = BeautifulSoup(content, self.parser)
         
         # Extract metadata
         metadata = self._extract_metadata(soup, filename)
@@ -168,7 +185,7 @@ class HTMLConverter(BaseConverter):
         """
         # Remove comments if configured to do so
         if self.remove_comments:
-            for comment in soup.find_all(text=lambda text: isinstance(text, Comment)):
+            for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
                 comment.extract()
         
         # Remove script tags if configured to do so
