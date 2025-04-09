@@ -28,15 +28,18 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
         log_level: Logging level as string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Optional path to log file
     """
-    # Convert string level to logging level
-    level_map = {
-        'DEBUG': logging.DEBUG,
-        'INFO': logging.INFO,
-        'WARNING': logging.WARNING,
-        'ERROR': logging.ERROR,
-        'CRITICAL': logging.CRITICAL
-    }
-    level = level_map.get(log_level.upper(), logging.INFO)
+    # --- TEMPORARY DEBUG --- Force DEBUG level for testing
+    level = logging.DEBUG 
+    # # Convert string level to logging level
+    # level_map = {
+    #     'DEBUG': logging.DEBUG,
+    #     'INFO': logging.INFO,
+    #     'WARNING': logging.WARNING,
+    #     'ERROR': logging.ERROR,
+    #     'CRITICAL': logging.CRITICAL
+    # }
+    # level = level_map.get(log_level.upper(), logging.INFO)
+    # --- END TEMPORARY DEBUG ---
     
     # Set up root logger
     root_logger = logging.getLogger()

@@ -58,7 +58,9 @@ class ProcessorPipeline:
                 remove_boilerplate=self.config.get("cleaning.remove_boilerplate", True),
                 remove_duplicate_content=self.config.get("cleaning.remove_duplicate_content", True),
                 remove_irrelevant_metadata=self.config.get("cleaning.remove_irrelevant_metadata", True),
-                merge_short_paragraphs=self.config.get("cleaning.merge_short_paragraphs", True)
+                merge_short_paragraphs=self.config.get("cleaning.merge_short_paragraphs", True),
+                remove_footnotes=self.config.get("cleaning.remove_footnotes", False),
+                join_paragraph_lines=self.config.get("cleaning.join_paragraph_lines", True)
             ))
         
         # --- Add Content Optimizer --- 

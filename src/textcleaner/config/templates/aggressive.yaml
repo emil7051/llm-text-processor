@@ -9,3 +9,7 @@ html:
 
 pdf:
   aggressive_cleaning: true # Use more aggressive PDF cleaning if available 
+  remove_footnotes: true # Remove footnotes in aggressive mode
+
+# Optimization settings (specific to aggressive)
+optimizations: 

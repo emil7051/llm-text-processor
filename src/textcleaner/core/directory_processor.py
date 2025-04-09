@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from textcleaner.core.processor import TextProcessor
 
+from tqdm import tqdm # Add tqdm import
+
 class DirectoryProcessor:
     """Handles processing of entire directories of files."""
 
@@ -141,6 +143,8 @@ class DirectoryProcessor:
         output_format: Optional[str] = None,
         recursive: bool = True,
         file_extensions: Optional[List[str]] = None,
+        quiet_mode: bool = False,  # Add quiet_mode
+        no_progress: bool = False, # Add no_progress
     ) -> List[ProcessingResult]:
         """Process all supported files in a directory sequentially."""
         self.logger.info(f"Starting sequential processing for directory: {input_dir}")
@@ -164,28 +168,35 @@ class DirectoryProcessor:
         results = []
         successful = 0
         failed = 0
-
-        for i, file_path in enumerate(files_to_process, 1):
-            self.logger.info(f"Processing file {i}/{total_files}: {file_path.name}")
-            try:
-                output_file = self._calculate_relative_output_path(
-                    file_path, input_dir_p, output_dir_p, output_format
-                )
-                # Use the single file processor
-                result = self.single_file_processor.process_file(file_path, output_file, output_format)
-                if result.success:
-                    successful += 1
-                else:
+        
+        # Setup progress bar, disabling if quiet or no_progress
+        disable_pbar = quiet_mode or no_progress
+        pbar_desc = f"Processing {input_dir_p.name}"
+        with tqdm(total=total_files, desc=pbar_desc, disable=disable_pbar, unit="file") as pbar:
+            for file_path in files_to_process:
+                self.logger.info(f"Processing file {pbar.n + 1}/{total_files}: {file_path.name}")
+                try:
+                    output_file = self._calculate_relative_output_path(
+                        file_path, input_dir_p, output_dir_p, output_format
+                    )
+                    # Use the single file processor
+                    result = self.single_file_processor.process_file(file_path, output_file, output_format)
+                    if result.success:
+                        successful += 1
+                    else:
+                        failed += 1
+                        self.logger.error(f"Failed: {file_path.name} - {result.error}")
+                    results.append(result)
+                except Exception as e:
+                    self.logger.error(f"Error processing file {file_path.name}: {e}")
+                    results.append(ProcessingResult(
+                        input_path=file_path, 
+                        success=False, 
+                        error=f"Unexpected error: {str(e)}"
+                    ))
                     failed += 1
-                results.append(result)
-            except Exception as e:
-                self.logger.error(f"Error processing file {file_path.name}: {e}")
-                results.append(ProcessingResult(
-                    input_path=file_path, 
-                    success=False, 
-                    error=f"Unexpected error: {str(e)}"
-                ))
-                failed += 1
+                finally:
+                    pbar.update(1) # Ensure progress bar updates even on error
 
         self.logger.info(f"Sequential directory processing complete: {successful} successful, {failed} failed")
         return results
@@ -197,7 +208,9 @@ class DirectoryProcessor:
         output_format: Optional[str] = None,
         recursive: bool = True,
         file_extensions: Optional[List[str]] = None,
-        max_workers: Optional[int] = None
+        max_workers: Optional[int] = None,
+        quiet_mode: bool = False,  # Add quiet_mode
+        no_progress: bool = False, # Add no_progress
     ) -> List[ProcessingResult]:
         """Process all supported files in a directory using parallel processing."""
         with performance_monitor.performance_context("process_directory_parallel"):
@@ -231,94 +244,60 @@ class DirectoryProcessor:
                      # Create a new instance with the specified worker count
                      processor = ParallelProcessor(max_workers=max_workers)
 
-            # tasks_args = [] # Removed: Will pass file_path directly
-            task_id_to_input_path = {} # Keep for associating results back if needed
-            skipped_results = []
-            # Prepare list of input files and task IDs directly
-            input_files_to_process = []
-            task_ids = []
-
-            for i, file_path in enumerate(files_to_process):
-                # Basic check to skip files that cannot be processed (e.g., permission issues detected earlier)
-                # Although _find_files_to_process should filter most, this is a safeguard
-                if not file_path.is_file(): # Simple check
-                    self.logger.warning(f"Skipping non-file path during parallel task prep: {file_path}")
-                    skipped_results.append(ProcessingResult(input_path=file_path, success=False, error="Path is not a file"))
-                    continue
-                
-                task_id = f"process_{i}_{file_path.name}"
-                input_files_to_process.append(file_path)
-                task_ids.append(task_id)
-                task_id_to_input_path[task_id] = file_path
-
-            if not input_files_to_process:
-                 self.logger.warning("No tasks could be prepared for parallel processing.")
-                 return skipped_results
-
-            # Define the task function executed by each worker
-            def process_file_task(file_path: Path) -> ProcessingResult:
-                try:
-                    # Calculate output path inside the parallel task
+            results = [] # Initialize results before try block
+            try:
+                # Prepare tasks for parallel execution
+                tasks = []
+                task_ids = []
+                for i, file_path in enumerate(files_to_process):
                     output_path = self._calculate_relative_output_path(
                         file_path, input_dir_p, output_dir_p, output_format
                     )
-                    # Process the file using the single file processor
-                    return self.single_file_processor.process_file(file_path, output_path, output_format)
-                except Exception as e:
-                    # Catch errors during path calculation or processing within the task
-                    self.logger.error(f"Error in parallel task for {file_path.name}: {e}")
-                    return ProcessingResult(
-                        input_path=file_path,
+                    tasks.append((file_path, output_path, output_format))
+                    task_ids.append(str(file_path)) # Use file path as task ID
+
+                # Define the function to be executed in parallel
+                def process_single_task(task_data: Tuple[Path, Path, str]) -> ProcessingResult:
+                    file_path, output_path, fmt = task_data
+                    # Ensure each worker gets a fresh security context if needed, or share
+                    # Assuming self.single_file_processor is safe to use across threads/processes
+                    # Or create a new processor instance per worker if necessary
+                    return self.single_file_processor.process_file(file_path, output_path, fmt)
+
+                # Execute tasks in parallel using the ParallelProcessor instance
+                # Replace run_parallel with process_items
+                parallel_results: List[ParallelResult[Tuple[Path, Path, str], ProcessingResult]] = processor.process_items(
+                    items=tasks,
+                    process_func=process_single_task,
+                    task_ids=task_ids,
+                    use_processes=False, # Set explicitly to False (use threads)
+                    show_progress=True # Assuming progress should be shown
+                )
+
+                # Convert ParallelResult back to ProcessingResult
+                results = [pr.result for pr in parallel_results if pr.success]
+                # Optionally log errors from pr.error where pr.success is False
+                failed_results = [pr for pr in parallel_results if not pr.success]
+                for fr in failed_results:
+                    self.logger.error(f"Parallel task failed for input {fr.input_item[0]}: {fr.error}")
+                    # Add a failed ProcessingResult to the main results list
+                    failed_input_path, failed_output_path, _ = fr.input_item
+                    results.append(ProcessingResult(
+                        input_path=failed_input_path,
+                        output_path=failed_output_path, 
                         success=False,
-                        error=f"Parallel task failed: {str(e)}"
-                    )
+                        error=fr.error or "Parallel task failed without specific error message",
+                        original_token_count=0, # Or fetch if possible
+                        final_token_count=0,
+                        processing_time=fr.processing_time
+                    )) 
 
-            # Pass the list of input file paths directly to process_items
-            parallel_results: List[ParallelResult[Path, ProcessingResult]] = processor.process_items(
-                items=input_files_to_process, # Pass input file paths
-                process_func=process_file_task,
-                task_ids=task_ids, # Pass the generated task IDs
-                use_processes=False # Keep using threads for now unless I/O bound is confirmed bottleneck
-            )
+            except Exception as e:
+                self.logger.error(f"Parallel execution failed: {e}", exc_info=True)
+                # Return empty list or re-raise depending on desired error handling
+                # Now 'results' is defined (as potentially empty list)
 
-            results = skipped_results
-            for pr in parallel_results:
-                if pr.success and isinstance(pr.result, ProcessingResult):
-                    results.append(pr.result)
-                else:
-                    input_path = task_id_to_input_path.get(pr.task_id)
-                    if input_path:
-                        results.append(ProcessingResult(
-                            input_path=input_path,
-                            success=False,
-                            error=pr.error or "Unknown parallel processing error"
-                        ))
-                    else:
-                        self.logger.error(f"Failed parallel task {pr.task_id} for an unknown input file. Error: {pr.error}")
-
-            successful = sum(1 for r in results if r.success)
+            successful = len([r for r in results if r.success])
             failed = len(results) - successful
-
-            # Calculate average token reduction
-            total_token_reduction = 0
-            reduction_count = 0
-            for r in results:
-                if r.success and r.metrics and "token_reduction_percent" in r.metrics:
-                    try:
-                        total_token_reduction += float(r.metrics["token_reduction_percent"])
-                        reduction_count += 1
-                    except (ValueError, TypeError):
-                        pass # Ignore results with invalid metric data
-            
-            avg_token_reduction = total_token_reduction / reduction_count if reduction_count > 0 else 0
-
-            # Log summary including average reduction
-            self.logger.info(f"Parallel directory processing complete: {successful}/{total_files} successful, {failed} failed (including {len(skipped_results)} skipped preparation)")
-            self.logger.info(f"Average token reduction across successful files: {avg_token_reduction:.2f}%")
-
-            if self.config.get("general.save_performance_report", False):
-                report_path = output_dir_p / "performance_report.json"
-                performance_monitor.save_report(report_path)
-                self.logger.info(f"Performance report saved to {report_path}")
-            
-            return results 
+            self.logger.info(f"Parallel directory processing complete: {successful} successful, {failed} failed")
+            return results

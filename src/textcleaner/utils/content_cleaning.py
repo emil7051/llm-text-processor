@@ -101,17 +101,46 @@ def remove_duplicates(content: str) -> str:
     seen_paragraphs = set()
     min_duplicate_length = 20 # Only remove duplicates longer than this
     
+    # DEBUG: Log received paragraphs
+    logger.debug(f"--- remove_duplicates received {len(paragraphs)} paragraphs ---")
+    for i, para in enumerate(paragraphs):
+        logger.debug(f"Para {i}: {repr(para[:100])}...") # Log first 100 chars with repr
+        
     for para in paragraphs:
         para_stripped = para.strip()
-        if not para_stripped: continue # Skip empty paragraphs
+        if not para_stripped: 
+            logger.debug("Skipping empty paragraph after strip.")
+            continue # Skip empty paragraphs
 
         normalized = re.sub(r'\s+', ' ', para_stripped.lower())
         if normalized in seen_paragraphs and len(normalized) > min_duplicate_length:
+            logger.debug(f"Removing duplicate paragraph (normalized): {repr(normalized[:100])}...")
             continue
+            
+        # --- NEW: Remove duplicate sentences within the paragraph --- 
+        # Basic sentence split (adjust regex if needed for more complex cases)
+        # Keep delimiters to rejoin correctly. (?<=[.!?]) looks behind for punctuation.
+        sentences = re.split(r'(?<=[.!?])\s+', para_stripped)
+        unique_sentences = []
+        seen_sentences = set()
+        for sentence in sentences:
+            sentence_norm = ' '.join(sentence.lower().split())
+            if sentence_norm in seen_sentences:
+                logger.debug(f"Removing duplicate sentence within paragraph: {repr(sentence_norm[:80])}...")
+                continue
+            unique_sentences.append(sentence) # Append original sentence
+            seen_sentences.add(sentence_norm)
         
-        unique_paragraphs.append(para_stripped) # Append original stripped para
-        seen_paragraphs.add(normalized)
+        # Rejoin the unique sentences for this paragraph
+        # Need to handle the space correctly. If rejoining adds extra space, adjust.
+        para_deduped_sentences = ' '.join(unique_sentences).strip() 
+        # --- END NEW --- 
+        
+        # Append the paragraph (now with internal duplicates removed)
+        unique_paragraphs.append(para_deduped_sentences) # Append paragraph with unique sentences
+        seen_paragraphs.add(normalized) # Still add the normalized *paragraph* to avoid duplicate paragraphs
     
+    logger.debug(f"--- remove_duplicates returning {len(unique_paragraphs)} unique paragraphs ---")
     return '\n\n'.join(unique_paragraphs)
 
 def remove_boilerplate_text(content: str) -> str:
@@ -194,4 +223,74 @@ def merge_short_paragraphs(content: str) -> str:
 
 def normalize_unicode(content: str) -> str:
     """Normalize unicode characters using NFC."""
-    return unicodedata.normalize('NFC', content) 
+    return unicodedata.normalize('NFC', content)
+
+def join_paragraph_lines(content: str) -> str:
+    """Join lines within paragraphs intelligently, preserving list/heading structure."""
+    lines = content.splitlines()
+    processed_lines = []
+    current_paragraph = ""
+    # Regex to detect lines likely starting new blocks (lists, headings)
+    # Simple version: starts with #, -, *, +, > or digits followed by dot/paren.
+    # Be careful not to match lines that are just numbers (e.g., page numbers already handled)
+    # Let's refine this: require a space after the marker for lists/headings.
+    block_start_pattern = re.compile(r"^\s*(?:#{1,6}|[-*+>]|\d+[\.\)])\s+")
+
+    for i, line in enumerate(lines):
+        stripped_line = line.strip()
+
+        if not stripped_line:
+            # Blank line: finalize previous paragraph and add a blank line separator
+            if current_paragraph:
+                processed_lines.append(current_paragraph)
+            processed_lines.append("") # Preserve the blank line
+            current_paragraph = ""
+        elif block_start_pattern.match(stripped_line) or \
+             (i > 0 and not lines[i-1].strip()): # Also treat line after blank as new block
+            # Line starts a new block (list, heading) or follows a blank line
+            if current_paragraph:
+                processed_lines.append(current_paragraph) # Finalize previous para
+            current_paragraph = stripped_line # Start new paragraph/block
+        else:
+            # Continuation of the current paragraph
+            if current_paragraph: 
+                current_paragraph += " " + stripped_line # Append with space
+            else:
+                current_paragraph = stripped_line # Start the first paragraph
+
+    # Add the last paragraph if it exists
+    if current_paragraph:
+        processed_lines.append(current_paragraph)
+
+    # Join the processed lines, ensuring proper paragraph separation
+    # Filter out potential multiple blank lines created during processing
+    final_content = []
+    last_line_blank = True # Treat start as if preceded by blank
+    for line in processed_lines:
+        if line == "":
+            if not last_line_blank: # Add only one blank line between paragraphs
+                final_content.append("")
+                last_line_blank = True
+        else:
+            final_content.append(line)
+            last_line_blank = False
+            
+    # Join with single newline, as paragraphs are now single lines
+    # Double newlines will be formed by the blank lines added between them.
+    return '\n'.join(final_content).strip()
+
+def remove_footnotes(content: str) -> str:
+    """Remove lines that appear to be footnotes (start with number, contain URL)."""
+    lines = content.splitlines()
+    cleaned_lines = []
+    # Pattern: Optional space, digits, optional dot/paren, space, anything, https?://, anything non-space
+    footnote_pattern = re.compile(r"^[ \t]*\d+[\.\)]?\s+.*?https?://\S")
+    
+    for line in lines:
+        # Check if the line matches the footnote pattern
+        if footnote_pattern.search(line):
+            logger.debug(f"Removing potential footnote line: {line[:80]}...")
+            continue # Skip this line
+        cleaned_lines.append(line)
+            
+    return '\n'.join(cleaned_lines) 

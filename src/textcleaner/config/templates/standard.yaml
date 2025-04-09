@@ -1,6 +1,6 @@
 # Standard configuration settings
 general:
-  output_dir: "processed_files"
+  output_dir: "cleaned_files"
   default_output_format: "markdown" # Default format if not specified
   preserve_line_breaks: false
   preserve_tables: true
@@ -12,7 +12,7 @@ general:
 
 processing:
   clean_level: "standard"
-  remove_headers_footers: false # Standard processing keeps headers/footers
+  remove_headers_footers: true # Standard processing keeps headers/footers
   preserve_structure: true
   max_concurrency: null # Use default (CPU count)
 
@@ -27,10 +27,11 @@ html:
 
 pdf:
   merge_hyphenated_words: true
-  extract_images: false # Don't extract images by default
+  extract_images: true # Don't extract images by default
+  remove_footnotes: true # Keep footnotes by default in standard
 
 output:
-  include_metadata: true
+  include_metadata: false
   metadata_position: "end" # Append metadata at the end
 
 # File type registry (example, can be customized)
@@ -46,4 +47,14 @@ file_types:
     output_formats: ["markdown", "plain_text"]
   office:
     extensions: [".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"]
-    output_formats: ["markdown", "plain_text"] 
+    output_formats: ["markdown", "plain_text"]
+
+clean_whitespace: true
+remove_boilerplate: true
+remove_duplicate_content: true
+remove_irrelevant_metadata: false # Placeholder, not implemented
+merge_short_paragraphs: false # Keep false by default
+join_paragraph_lines: true # Join lines within paragraphs by default
+
+# OCR Processor Settings (if applicable, requires tesseract installed)
+# ocr_processor: 

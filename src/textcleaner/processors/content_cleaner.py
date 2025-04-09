@@ -23,7 +23,9 @@ class ContentCleaner(BaseProcessor):
                  remove_boilerplate: bool,
                  remove_duplicate_content: bool,
                  remove_irrelevant_metadata: bool, # Keep param for config compatibility
-                 merge_short_paragraphs: bool):
+                 merge_short_paragraphs: bool,
+                 remove_footnotes: bool, # Add new param
+                 join_paragraph_lines: bool): # Add param for joining lines
         """Initialize the content cleaner.
         
         Args:
@@ -36,6 +38,8 @@ class ContentCleaner(BaseProcessor):
             remove_duplicate_content: Remove duplicate paragraphs/sections.
             remove_irrelevant_metadata: Placeholder - currently not implemented.
             merge_short_paragraphs: Merge adjacent short paragraphs.
+            remove_footnotes: Remove lines identified as footnotes.
+            join_paragraph_lines: Join lines within the same paragraph.
         """
         self.remove_headers_footers = remove_headers_footers
         # self.remove_page_numbers = remove_page_numbers # Unused member (logic handled by remove_headers_footers)
@@ -46,6 +50,8 @@ class ContentCleaner(BaseProcessor):
         self.remove_duplicate_content = remove_duplicate_content
         # self.remove_irrelevant_metadata = remove_irrelevant_metadata # Unused member
         self.merge_short_paragraphs = merge_short_paragraphs
+        self.remove_footnotes = remove_footnotes # Assign new param
+        self.join_paragraph_lines = join_paragraph_lines # Assign new param
         
     def process(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Apply all configured cleaning steps to the content."""
@@ -58,18 +64,28 @@ class ContentCleaner(BaseProcessor):
         if self.remove_headers_footers:
             processed_content = cc_utils.remove_headers_footers(processed_content)
         
+        # Add footnote removal EARLY, before duplicate/boilerplate removal
+        if self.remove_footnotes:
+            processed_content = cc_utils.remove_footnotes(processed_content)
+        
         # Removed confusing conditional block for remove_page_numbers as it's handled above
         # if self.remove_page_numbers and not self.remove_headers_footers:
         #     pass 
 
+        # Step 1: Clean basic whitespace and normalize paragraph separators
+        if self.clean_whitespace:
+            processed_content = cc_utils.clean_whitespace(processed_content)
+
+        # Step 2: Join lines within paragraphs
+        if self.join_paragraph_lines:
+            processed_content = cc_utils.join_paragraph_lines(processed_content)
+
+        # Step 3: Remove duplicates now that paragraphs are formed and separated consistently
         if self.remove_duplicate_content:
             processed_content = cc_utils.remove_duplicates(processed_content)
         
         if self.remove_boilerplate:
             processed_content = cc_utils.remove_boilerplate_text(processed_content)
-        
-        if self.clean_whitespace:
-            processed_content = cc_utils.clean_whitespace(processed_content)
         
         if self.merge_short_paragraphs:
             processed_content = cc_utils.merge_short_paragraphs(processed_content)

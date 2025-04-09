@@ -165,11 +165,13 @@ def _process_directory(
     output_dir: Optional[Path],
     output_format: Optional[str],
     recursive: bool,
+    quiet_mode: bool,  # Add quiet_mode
+    no_progress: bool, # Add no_progress
     # TODO: Expose these as CLI options if needed
     use_parallel: bool = True, 
     max_workers: Optional[int] = None,
     file_extensions: Optional[List[str]] = None
-):
+) -> List[ProcessingResult]: # Add return type hint
     """Processes all supported files within a directory."""
     logger = get_logger(__name__)
     logger.info(f"Processing directory: {input_dir}")
@@ -188,26 +190,32 @@ def _process_directory(
     )
 
     try:
+        results: List[ProcessingResult] = [] # Initialize results list
         if use_parallel:
              logger.debug(f"Starting parallel processing for {input_dir}")
-             directory_processor.process_directory_parallel(
+             results = directory_processor.process_directory_parallel(
                  input_dir=input_dir,
                  output_dir=output_dir,
                  output_format=output_format,
                  recursive=recursive,
-                 file_extensions=file_extensions, 
+                 file_extensions=file_extensions,
+                 quiet_mode=quiet_mode, # Pass down
+                 no_progress=no_progress # Pass down
                  # max_workers is handled by ParallelProcessor instance now
              )
         else:
              logger.debug(f"Starting sequential processing for {input_dir}")
-             directory_processor.process_directory(
+             results = directory_processor.process_directory(
                  input_dir=input_dir,
                  output_dir=output_dir,
                  output_format=output_format,
                  recursive=recursive,
-                 file_extensions=file_extensions 
+                 file_extensions=file_extensions,
+                 quiet_mode=quiet_mode, # Pass down
+                 no_progress=no_progress # Pass down
              )
         logger.info(f"Finished processing directory: {input_dir}")
+        return results # Return the results
     except Exception as e:
         # Catch potential errors during directory processing
         error_msg = f"Error processing directory {input_dir}: {str(e)}"
@@ -298,17 +306,82 @@ def process(
             quiet_mode=quiet_mode
         )
     elif input_path_obj.is_dir():
+        # Determine the final output directory path
+        final_output_dir = output_path_obj # Start with the validated path (or None)
+
+        if final_output_dir is None:
+            # If no output path was provided for a directory, create the default
+            # relative to the input directory's parent.
+            default_output_dir_name = "cleaned_files" # TODO: Make this configurable?
+            # Use resolve() to get an absolute path before going to parent
+            final_output_dir = input_path_obj.resolve().parent / default_output_dir_name
+            logger.info(f"No output path specified for directory input. Defaulting to: {final_output_dir}")
+
+            # Validate and create this default path
+            # We need access to security_utils, get it from the factory
+            security_utils = _factory._get_security_utils()
+            is_valid, error = security_utils.validate_output_path(final_output_dir)
+            if not is_valid:
+                error_msg = f"Validation failed for default output path '{final_output_dir}': {error}"
+                logger.error(error_msg)
+                click.echo(error_msg, err=True)
+                sys.exit(1)
+
+            # Ensure directory exists
+            try:
+                final_output_dir.mkdir(parents=True, exist_ok=True)
+                logger.debug(f"Ensured default output directory exists: {final_output_dir}")
+            except Exception as e:
+                 error_msg = f"Error creating default output directory '{final_output_dir}': {str(e)}"
+                 logger.error(error_msg)
+                 click.echo(error_msg, err=True)
+                 sys.exit(1)
+
+        # Now call _process_directory with the determined final_output_dir
+        # Pass quiet_mode and no_progress down
         # TODO: Add CLI option for parallel vs sequential?
         use_parallel_processing = True # Default to parallel for now
-        _process_directory(
+        results = _process_directory(
             processor=processor,
             input_dir=input_path_obj,
-            output_dir=output_path_obj,
+            output_dir=final_output_dir, # Pass the determined path
             output_format=format,
             recursive=recursive,
-            use_parallel=use_parallel_processing
+            use_parallel=use_parallel_processing,
+            quiet_mode=quiet_mode, # Pass down
+            no_progress=no_progress # Pass down
             # Pass other relevant params like max_workers if added as CLI options
         )
+        
+        # Process and display aggregate results for directory
+        if not quiet_mode and results:
+            successful_count = sum(1 for r in results if r.success)
+            failed_count = len(results) - successful_count
+            
+            total_original_tokens = 0
+            total_processed_tokens = 0
+            token_reduction_possible = False
+            
+            for r in results:
+                if r.success:
+                    orig_tokens = r.metrics.get("original_token_estimate")
+                    proc_tokens = r.metrics.get("processed_token_estimate")
+                    if orig_tokens is not None and proc_tokens is not None:
+                        total_original_tokens += orig_tokens
+                        total_processed_tokens += proc_tokens
+                        token_reduction_possible = True
+
+            click.echo(f"\nDirectory Processing Summary:")
+            click.echo(f"  Total files processed: {len(results)} ({successful_count} successful, {failed_count} failed)")
+            if token_reduction_possible:
+                total_tokens_removed = total_original_tokens - total_processed_tokens
+                avg_reduction_percent = ((total_original_tokens - total_processed_tokens) / total_original_tokens * 100) \
+                                        if total_original_tokens > 0 else 0
+                click.echo(f"  Total tokens removed: {total_tokens_removed:,}")
+                click.echo(f"  Average token reduction: {avg_reduction_percent:.1f}%")
+            else:
+                click.echo("  Token reduction statistics not available for all files.")
+            
     else:
         # This case should technically be caught by validate_path, but safety first
         error_msg = f"Error: Input path '{input_path}' is neither a file nor a directory."
