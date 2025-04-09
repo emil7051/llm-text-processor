@@ -344,15 +344,22 @@ def _process_single_file(
         processing_time = time.time() - start_time
         
         if result.success:
-            success_msg = f"Successfully processed '{input_path.name}' in {processing_time:.2f}s"
+            # Base success message (always shown unless quiet)
+            base_success_msg = f"Successfully processed '{input_path.name}' in {processing_time:.2f}s"
             
-            if verbose_count > 0:
-                token_reduction = result.metrics.get("token_reduction_percent", 0)
-                success_msg += f" (Token reduction: {token_reduction:.1f}%)"
-                
             if not quiet_mode:
+                # Default output includes token reduction % if available
+                token_reduction = result.metrics.get("token_reduction_percent")
+                if token_reduction is not None:
+                    success_msg = f"{base_success_msg} (Token reduction: {token_reduction:.1f}%)"
+                else:
+                    success_msg = base_success_msg
                 click.echo(success_msg)
-            
+            else:
+                # Log basic success even in quiet mode
+                logger.info(base_success_msg)
+
+            # Output path message (always shown unless quiet, always logged)
             if result.output_path:
                 output_location = f"Output saved to: {result.output_path}"
                 logger.info(output_location)
@@ -361,14 +368,27 @@ def _process_single_file(
             else:
                 logger.warning(f"No output path returned for {input_path.name}")
                 
+            # Verbose output (-v) - Add size reduction and stages
+            if verbose_count == 1 and not quiet_mode:
+                size_reduction = result.metrics.get("size_reduction_percent")
+                stages = result.metrics.get("processing_stages", [])
+                if size_reduction is not None:
+                    click.echo(f"  Size reduction:   {size_reduction:.1f}%")
+                if stages:
+                     click.echo(f"  Processing steps: {', '.join(stages)}")
+
+            # Debug output (-vv) - Log detailed metrics
+            # Note: _log_detailed_metrics already uses logger.debug
             if verbose_count >= 2:
                 _log_detailed_metrics(result, logger)
                 
+            # Always display token stats unless quiet
             if not quiet_mode:
                 _display_token_statistics(
                     result.metrics, 
                     processing_time, 
-                    output_format=output_format
+                    output_format=output_format,
+                    verbose=(verbose_count > 0) # Pass verbosity to potentially show more stats
                 )
         else:
             # Handle specific processing failures reported by TextProcessor
@@ -397,42 +417,62 @@ def _log_detailed_metrics(result: ProcessingResult, logger):
     metrics = result.metrics
     # Ensure input_path is available and has a name attribute
     input_name = result.input_path.name if hasattr(result.input_path, 'name') else str(result.input_path)
-    logger.debug(f"File: {input_name}")
+    logger.debug(f"--- Detailed Metrics for {input_name} ---") # Header for clarity
     logger.debug(f"Original size (bytes): {metrics.get('original_size_bytes', 'N/A')}")
     logger.debug(f"Processed size (bytes): {metrics.get('processed_size_bytes', 'N/A')}")
-    logger.debug(f"Size reduction: {metrics.get('size_reduction_percent', 0):.1f}%")
-    logger.debug(f"Removed whitespace: {metrics.get('whitespace_removed', 0)} chars")
-    logger.debug(f"Removed duplicates: {metrics.get('duplicates_removed', 0)} lines")
-    logger.debug(f"Processing stages: {', '.join(metrics.get('processing_stages', []))}")
+    logger.debug(f"Size reduction: {metrics.get('size_reduction_percent', 'N/A'):.1f}%") # Ensure float format
+    logger.debug(f"Removed whitespace: {metrics.get('whitespace_removed', 'N/A')} chars")
+    logger.debug(f"Removed duplicates: {metrics.get('duplicates_removed', 'N/A')} lines")
+    logger.debug(f"Processing stages: {', '.join(metrics.get('processing_stages', ['N/A']))}") # Handle empty list
+    logger.debug(f"Original Tokens: {metrics.get('original_token_estimate', 'N/A')}")
+    logger.debug(f"Processed Tokens: {metrics.get('processed_token_estimate', 'N/A')}")
+    logger.debug(f"Token Reduction: {metrics.get('token_reduction_percent', 'N/A'):.1f}%") # Ensure float format
+    logger.debug("--- End Detailed Metrics ---")
 
 
 def _display_token_statistics(
     metrics: Dict[str, Any], 
     processing_time: float,
-    output_format: Optional[str] = None
+    output_format: Optional[str] = None,
+    verbose: bool = False # Added verbose flag
 ) -> None:
     """Display token statistics in a consistent format."""
-    original_tokens = metrics.get("original_token_estimate", 0)
-    processed_tokens = metrics.get("processed_token_estimate", 0)
-    token_reduction = metrics.get("token_reduction_percent", 0)
+    original_tokens = metrics.get("original_token_estimate")
+    processed_tokens = metrics.get("processed_token_estimate")
+    token_reduction = metrics.get("token_reduction_percent")
+    size_reduction = metrics.get("size_reduction_percent") # Get size reduction
     
     # Format output based on requested format
     if output_format == "json":
         stats = {
-            "original_tokens": original_tokens,
-            "processed_tokens": processed_tokens,
-            "token_reduction_percent": token_reduction,
-            "processing_time_seconds": processing_time,
-            **{k: v for k, v in metrics.items() if k not in [
-                "original_token_estimate", "processed_token_estimate", "token_reduction_percent"
-            ]}
+            "processing_time_seconds": round(processing_time, 2), # Round for consistency
         }
+        # Include available metrics consistently
+        if original_tokens is not None: stats["original_tokens"] = original_tokens
+        if processed_tokens is not None: stats["processed_tokens"] = processed_tokens
+        if token_reduction is not None: stats["token_reduction_percent"] = round(token_reduction, 2)
+        if size_reduction is not None: stats["size_reduction_percent"] = round(size_reduction, 2)
+        
+        # Add other metrics present in the dictionary, excluding those already handled
+        handled_keys = {
+            "original_token_estimate", "processed_token_estimate", 
+            "token_reduction_percent", "size_reduction_percent"
+        }
+        stats.update({k: v for k, v in metrics.items() if k not in handled_keys})
+        
         click.echo(json.dumps(stats, indent=2))
     else:
-        click.echo(f"\nToken Statistics:")
-        click.echo(f"  Original tokens:  {original_tokens:,}")
-        click.echo(f"  Processed tokens: {processed_tokens:,}")
-        click.echo(f"  Token reduction:  {token_reduction:.2f}%")
+        click.echo(f"\nProcessing Summary:")
+        if original_tokens is not None:
+            click.echo(f"  Original tokens:  {original_tokens:,}")
+        if processed_tokens is not None:
+            click.echo(f"  Processed tokens: {processed_tokens:,}")
+        if token_reduction is not None:
+            click.echo(f"  Token reduction:  {token_reduction:.1f}%")
+        # Show size reduction in non-JSON verbose mode as well
+        if verbose and size_reduction is not None:
+             click.echo(f"  Size reduction:   {size_reduction:.1f}%")
+            
         click.echo(f"  Processing time:  {processing_time:.2f}s")
 
 
