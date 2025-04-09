@@ -5,8 +5,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from PyPDF2 import PdfReader
-from PyPDF2.errors import PdfReadError
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 import pdfminer
 from pdfminer.high_level import extract_text as pdfminer_extract_text
 from pdfminer.pdfparser import PDFSyntaxError
