@@ -11,7 +11,13 @@ from textcleaner.core.models import ProcessingResult # Import from models
 from textcleaner.utils.security import SecurityUtils
 from textcleaner.utils.performance import performance_monitor
 from textcleaner.utils.parallel import ParallelProcessor, ParallelResult
-from textcleaner.utils.file_utils import find_files, get_default_extension, get_format_from_extension
+from textcleaner.utils.file_utils import (
+    find_files, 
+    get_default_extension, # Still needed for fallback logic within the utility
+    get_format_from_extension, # Used by the utility
+    resolve_output_dir, 
+    determine_output_format_and_extension
+)
 
 # Forward declaration using string literal is sufficient
 from typing import TYPE_CHECKING
@@ -49,19 +55,8 @@ class DirectoryProcessor:
         if not input_dir_p.is_dir():
             raise ValueError(f"Input path is not a directory: {input_dir_p}")
 
-        if output_dir is None:
-            output_dir_p = Path(self.config.get("general.output_dir", "processed_files"))
-        else:
-            output_dir_p = Path(output_dir) if isinstance(output_dir, str) else output_dir
-
-        is_valid, error = self.security.validate_output_path(output_dir_p)
-        if not is_valid:
-            raise PermissionError(f"Output directory validation failed: {error}")
-
-        try:
-            output_dir_p.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            raise RuntimeError(f"Failed to create output directory {output_dir_p}: {e}") from e
+        # Resolve, validate, and create the output directory using the utility
+        output_dir_p = resolve_output_dir(output_dir, self.config, self.security)
 
         files_to_process = self._find_files_to_process(input_dir_p, recursive, file_extensions)
 
@@ -126,11 +121,13 @@ class DirectoryProcessor:
         rel_output_dir = output_dir / rel_path.parent
         rel_output_dir.mkdir(parents=True, exist_ok=True)
 
-        final_output_format = output_format or self.config.get("output.default_format", "markdown")
-        # Use utility function for extension
-        output_ext = self.config.get(
-            f"general.file_extension_mapping.{final_output_format}",
-            get_default_extension(final_output_format, self.single_file_processor.file_registry)
+        # Determine format and extension using the utility
+        # We don't have an explicit output path parameter here, so pass None
+        final_output_format, output_ext = determine_output_format_and_extension(
+            output_format_param=output_format, 
+            output_path_param=None, # Output path is being constructed
+            config=self.config, 
+            file_registry=self.single_file_processor.file_registry
         )
 
         return rel_output_dir / f"{input_file.stem}.{output_ext}"

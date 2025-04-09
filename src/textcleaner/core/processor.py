@@ -18,6 +18,7 @@ from textcleaner.utils.security import SecurityUtils
 from textcleaner.utils.performance import performance_monitor
 # from textcleaner.utils.parallel import ParallelProcessor # Removed - Unused in this class (commented out below)
 from textcleaner.utils.file_utils import get_default_extension, get_format_from_extension
+from textcleaner.utils.file_utils import resolve_output_dir, determine_output_format_and_extension
 from textcleaner.core.models import ProcessingResult # Import from models
 
 
@@ -115,32 +116,42 @@ class TextProcessor:
         if not is_valid:
             raise ValueError(f"Input file validation failed: {error}")
 
+        # Determine output path if not provided
+        output_path_p: Optional[Path] = None
         if output_path is None:
-            output_dir = Path(self.config.get("general.output_dir", "processed_files"))
-            output_dir.mkdir(exist_ok=True)
-            
-            final_output_format = output_format or self.config.get("output.default_format", "markdown")
-            # Use utility function for extension
-            output_ext = self.config.get(
-                f"general.file_extension_mapping.{final_output_format}",
-                get_default_extension(final_output_format, self.file_registry) # Pass registry
-            )
-            output_path_p = output_dir / f"{input_path_p.stem}.{output_ext}"
-            self.logger.debug(f"Using default output path: {output_path_p}")
+             # Output dir resolution and validation is deferred if path is None
+             # We only need the path later if we construct it here
+             output_dir = Path(self.config.get("general.output_dir", "processed_files"))
+             # Validation of this default dir happens implicitly in resolve_output_dir if used later
         else:
             output_path_p = Path(output_path) if isinstance(output_path, str) else output_path
-            # Use utility function for format guessing
-            final_output_format = output_format or get_format_from_extension(output_path_p.suffix)
 
-        is_valid, error = self.validate_output_path(output_path_p)
-        if not is_valid:
-            raise PermissionError(f"Output path validation failed: {error}")
+        # Determine final format and extension using the new utility
+        # Pass output_path_p (which might be None)
+        final_output_format, output_ext = determine_output_format_and_extension(
+            output_format_param=output_format,
+            output_path_param=output_path_p, # Pass the Path object or None
+            config=self.config,
+            file_registry=self.file_registry
+        )
 
-        try:
-             output_path_p.parent.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            raise RuntimeError(f"Failed to create output directory {output_path_p.parent}: {e}") from e
+        # Construct the final output path if it wasn't provided
+        if output_path_p is None:
+            # Resolve the actual output directory (handles creation and validation)
+            output_dir_resolved = resolve_output_dir(None, self.config, self.security)
+            output_path_p = output_dir_resolved / f"{input_path_p.stem}.{output_ext}"
+            self.logger.debug(f"Using default output path: {output_path_p}")
+        else:
+            # Validate the *provided* output path and ensure parent dir exists
+            is_valid, error = self.validate_output_path(output_path_p)
+            if not is_valid:
+                raise PermissionError(f"Output path validation failed: {error}")
+            try:
+                output_path_p.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                 raise RuntimeError(f"Failed to create output directory {output_path_p.parent}: {e}") from e
 
+        # The final output path (output_path_p) is now guaranteed to be a Path object
         return input_path_p, output_path_p, final_output_format
 
     def _execute_processing_steps(

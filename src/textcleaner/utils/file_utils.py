@@ -8,6 +8,9 @@ from typing import List, Set, Tuple, Union, Optional, Generator, TYPE_CHECKING
 # Use TYPE_CHECKING for imports needed only for type hints
 if TYPE_CHECKING:
     from textcleaner.core.file_registry import FileTypeRegistry
+    # Add ConfigManager and SecurityUtils imports under TYPE_CHECKING
+    from textcleaner.config.config_manager import ConfigManager
+    from textcleaner.utils.security import SecurityUtils
 
 def sanitize_filename(filename: str) -> str:
     """Remove unsafe characters from a filename.
@@ -187,3 +190,60 @@ def get_format_from_extension(extension: str) -> str:
     }
     # Fallback to the extension itself if not found
     return mapping.get(ext_lower, ext_lower)
+
+
+def resolve_output_dir(
+    output_dir_param: Optional[Union[str, Path]], 
+    config: 'ConfigManager', 
+    security: 'SecurityUtils'
+) -> Path:
+    """Resolve, validate, and ensure existence of the output directory."""
+    if output_dir_param is None:
+        output_dir_p = Path(config.get("general.output_dir", "processed_files"))
+    else:
+        output_dir_p = Path(output_dir_param) if isinstance(output_dir_param, str) else output_dir_param
+
+    is_valid, error = security.validate_output_path(output_dir_p)
+    if not is_valid:
+        # Use PermissionError consistent with DirectoryProcessor's original handling
+        raise PermissionError(f"Output directory validation failed: {error}")
+
+    try:
+        # ensure_dir_exists handles the mkdir call
+        ensure_dir_exists(output_dir_p) 
+    except OSError as e:
+        # Use RuntimeError consistent with DirectoryProcessor's original handling
+        raise RuntimeError(f"Failed to create output directory {output_dir_p}: {e}") from e
+
+    return output_dir_p
+
+
+def determine_output_format_and_extension(
+    output_format_param: Optional[str],
+    output_path_param: Optional[Path],
+    config: 'ConfigManager',
+    file_registry: 'FileTypeRegistry'
+) -> Tuple[str, str]:
+    """Determine the final output format and extension based on parameters and config."""
+    guessed_format = None
+    if output_path_param:
+        guessed_format = get_format_from_extension(output_path_param.suffix)
+
+    # Priority: Explicit format > Guessed from output path > Config default
+    final_output_format = output_format_param or guessed_format or config.get("output.default_format", "markdown")
+
+    # Priority for extension: Config mapping > Default from registry
+    output_ext = config.get(f"general.file_extension_mapping.{final_output_format}", None)
+    if output_ext is None:
+        try:
+            # get_default_extension expects format name, returns extension without dot
+            output_ext = get_default_extension(final_output_format, file_registry) 
+        except KeyError:
+            # Fallback if format somehow isn't in registry (shouldn't happen in normal flow)
+            output_ext = final_output_format 
+        except ValueError as e:
+            # Handle case where file_registry might be invalid (though unlikely here)
+            raise ValueError(f"Error getting default extension: {e}") from e
+
+
+    return final_output_format, output_ext
