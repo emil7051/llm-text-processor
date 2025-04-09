@@ -18,7 +18,7 @@ from textcleaner.core.file_registry import FileTypeRegistry
 from textcleaner.utils.file_utils import get_supported_extensions
 from textcleaner.utils.logging_config import configure_logging, get_logger
 from textcleaner.utils.log_utils import ProcessingLogger
-from textcleaner.utils.security import validate_path, sanitize_filename, SecurityUtils
+from textcleaner.utils.security import sanitize_filename, SecurityUtils
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import ParallelProcessor
 
