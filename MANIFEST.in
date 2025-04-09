@@ -1,4 +1,4 @@
 include README.md
 include LICENSE
-recursive-include src/textcleaner/config *.yaml *.json
-recursive-include src/textcleaner/config/templates *.yaml *.json 
+recursive-include src/textcleaner/config *.yaml *.json 
+recursive-include src/textcleaner *.py 
