@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
+import time # Add time import
 
 from textcleaner.config.config_manager import ConfigManager
 
@@ -94,6 +95,10 @@ class ProcessorPipeline:
         processed_content = content
         
         for processor in self.processors:
+            start_time = time.time()
             processed_content = processor.process(processed_content, metadata)
+            end_time = time.time()
+            # Log the time taken for each processor at DEBUG level
+            self.config.logger.debug(f"Processor '{processor.__class__.__name__}' took {end_time - start_time:.4f}s")
             
         return processed_content

@@ -74,6 +74,7 @@ class DirectoryProcessor:
     ) -> List[Path]:
         """Find all files to process in a directory, applying filters early."""
         files_to_process = []
+        extension_process_cache: Dict[str, bool] = {} # Cache for extension processability
         try:
             # Normalize filter extensions ONCE (ensure leading dot, lower case)
             normalized_filter_extensions: Optional[Set[str]] = None
@@ -92,9 +93,15 @@ class DirectoryProcessor:
                         continue # Skip if extension doesn't match filter
                 
                 # THEN check if the file processor supports/should handle it (includes security)
-                # Pass the original file_extensions list here as _should_process_file expects it
-                # (although its internal logic also needs checking/fixing)
-                if self.single_file_processor._should_process_file(file_path, file_extensions):
+                # Check cache first
+                should_process = extension_process_cache.get(file_ext_with_dot)
+                if should_process is None:
+                    # Not in cache, perform the check
+                    should_process = self.single_file_processor._should_process_file(file_path, file_extensions)
+                    # Store result in cache
+                    extension_process_cache[file_ext_with_dot] = should_process
+                
+                if should_process:
                     files_to_process.append(file_path)
         except (FileNotFoundError, NotADirectoryError) as e:
             self.logger.error(f"Error finding files in {input_dir}: {e}")
@@ -219,34 +226,54 @@ class DirectoryProcessor:
                 else:
                      processor = ParallelProcessor(max_workers=max_workers)
 
-            tasks_args = []
-            task_id_to_input_path = {}
+            # tasks_args = [] # Removed: Will pass file_path directly
+            task_id_to_input_path = {} # Keep for associating results back if needed
             skipped_results = []
-            for i, file_path in enumerate(files_to_process):
-                task_id = f"process_{i}_{file_path.name}"
-                try:
-                    output_file = self._calculate_relative_output_path(
-                        file_path, input_dir_p, output_dir_p, output_format
-                    )
-                    tasks_args.append((file_path, output_file))
-                    task_id_to_input_path[task_id] = file_path
-                except Exception as e:
-                    self.logger.error(f"Error preparing task for {file_path.name}, skipping: {e}")
-                    skipped_results.append(ProcessingResult(input_path=file_path, success=False, error=f"Failed task preparation: {e}"))
+            # Prepare list of input files and task IDs directly
+            input_files_to_process = []
+            task_ids = []
 
-            if not tasks_args:
+            for i, file_path in enumerate(files_to_process):
+                # Basic check to skip files that cannot be processed (e.g., permission issues detected earlier)
+                # Although _find_files_to_process should filter most, this is a safeguard
+                if not file_path.is_file(): # Simple check
+                    self.logger.warning(f"Skipping non-file path during parallel task prep: {file_path}")
+                    skipped_results.append(ProcessingResult(input_path=file_path, success=False, error="Path is not a file"))
+                    continue
+                
+                task_id = f"process_{i}_{file_path.name}"
+                input_files_to_process.append(file_path)
+                task_ids.append(task_id)
+                task_id_to_input_path[task_id] = file_path
+
+            if not input_files_to_process:
                  self.logger.warning("No tasks could be prepared for parallel processing.")
                  return skipped_results
 
-            def process_file_task(args: Tuple[Path, Path]) -> ProcessingResult:
-                file_path, output_path = args
-                return self.single_file_processor.process_file(file_path, output_path, output_format)
+            # Define the task function executed by each worker
+            def process_file_task(file_path: Path) -> ProcessingResult:
+                try:
+                    # Calculate output path inside the parallel task
+                    output_path = self._calculate_relative_output_path(
+                        file_path, input_dir_p, output_dir_p, output_format
+                    )
+                    # Process the file using the single file processor
+                    return self.single_file_processor.process_file(file_path, output_path, output_format)
+                except Exception as e:
+                    # Catch errors during path calculation or processing within the task
+                    self.logger.error(f"Error in parallel task for {file_path.name}: {e}")
+                    return ProcessingResult(
+                        input_path=file_path,
+                        success=False,
+                        error=f"Parallel task failed: {str(e)}"
+                    )
 
-            parallel_results: List[ParallelResult] = processor.process_items(
-                items=tasks_args,
+            # Pass the list of input file paths directly to process_items
+            parallel_results: List[ParallelResult[Path, ProcessingResult]] = processor.process_items(
+                items=input_files_to_process, # Pass input file paths
                 process_func=process_file_task,
-                task_ids=list(task_id_to_input_path.keys()),
-                use_processes=False
+                task_ids=task_ids, # Pass the generated task IDs
+                use_processes=False # Keep using threads for now unless I/O bound is confirmed bottleneck
             )
 
             results = skipped_results
@@ -267,7 +294,22 @@ class DirectoryProcessor:
             successful = sum(1 for r in results if r.success)
             failed = len(results) - successful
 
+            # Calculate average token reduction
+            total_token_reduction = 0
+            reduction_count = 0
+            for r in results:
+                if r.success and r.metrics and "token_reduction_percent" in r.metrics:
+                    try:
+                        total_token_reduction += float(r.metrics["token_reduction_percent"])
+                        reduction_count += 1
+                    except (ValueError, TypeError):
+                        pass # Ignore results with invalid metric data
+            
+            avg_token_reduction = total_token_reduction / reduction_count if reduction_count > 0 else 0
+
+            # Log summary including average reduction
             self.logger.info(f"Parallel directory processing complete: {successful}/{total_files} successful, {failed} failed (including {len(skipped_results)} skipped preparation)")
+            self.logger.info(f"Average token reduction across successful files: {avg_token_reduction:.2f}%")
 
             if self.config.get("general.save_performance_report", False):
                 report_path = output_dir_p / "performance_report.json"

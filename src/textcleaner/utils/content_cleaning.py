@@ -75,7 +75,8 @@ def remove_headers_footers(content: str) -> str:
         # Check for repetition
         repeated_lines[line_stripped] = repeated_lines.get(line_stripped, 0) + 1
         if repeated_lines[line_stripped] >= header_footer_candidate_threshold and len(line_stripped) < max_hf_length:
-            print(f"DEBUG H/F: Skipping repeated line: {line_stripped[:50]}...") # DEBUG
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"HeaderFooterFilter: Skipping repeated line: {line_stripped[:50]}...")
             skip_line = True
             
         if not skip_line:

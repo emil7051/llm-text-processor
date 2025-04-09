@@ -33,18 +33,36 @@ LLM_PRESETS = get_preset_names()
 @click.group()
 @click.version_option(version=__version__)
 @click.option('--log-level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-              case_sensitive=False), default='INFO', help='Set the logging level')
+              case_sensitive=False), help='Set the logging level explicitly (overrides verbosity flags)')
 @click.option('--log-file', type=click.Path(), help='Path to log file (if not specified, logs to console only)')
-def cli(log_level, log_file):
+@click.option('--verbose', '-v', count=True, help='Increase verbosity level (-v for INFO, -vv for DEBUG)')
+@click.option('--quiet', '-q', is_flag=True, help='Suppress console output (logs still written if --log-file specified)')
+def cli(log_level, log_file, verbose, quiet):
     """Text Cleaner Tool.
     
     A versatile tool for converting various file formats into clean,
     structured text optimized for Large Language Models (LLMs).
     """
+    # Determine effective log level
+    effective_log_level = 'WARNING' # Default if not verbose or quiet
+    if quiet:
+        effective_log_level = 'ERROR' # Suppress INFO/WARNING on console
+    elif verbose == 1:
+        effective_log_level = 'INFO'
+    elif verbose >= 2:
+        effective_log_level = 'DEBUG'
+        
+    # Explicit log level overrides verbosity
+    if log_level:
+        effective_log_level = log_level
+        
     # Configure logging
-    configure_logging(log_level=log_level, log_file=log_file)
+    configure_logging(log_level=effective_log_level, log_file=log_file, quiet=quiet)
     logger = get_logger(__name__)
     logger.info(f"Starting Text Cleaner CLI v{__version__}")
+    logger.debug(f"Effective log level set to: {effective_log_level}")
+    logger.debug(f"Quiet mode: {quiet}")
+    logger.debug(f"Log file: {log_file}")
 
 
 @cli.command()
@@ -61,8 +79,6 @@ def cli(log_level, log_file):
               help='Use a predefined LLM preset (overrides --config-type)')
 @click.option('--recursive', '-r', is_flag=True, default=True,
               help='Process directories recursively (default: True)')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
-@click.option('--quiet', '-q', is_flag=True, help='Suppress non-essential output')
 @click.option('--no-progress', is_flag=True, help='Disable progress bar')
 def process(
     input_path: str,
@@ -72,8 +88,6 @@ def process(
     config_type: str = DEFAULT_CONFIG_TYPE,
     preset: Optional[str] = None,
     recursive: bool = True,
-    verbose: bool = False,
-    quiet: bool = False,
     no_progress: bool = False
 ):
     """Process a file or directory of files.
@@ -101,6 +115,11 @@ def process(
     processing_logger = ProcessingLogger(__name__)
     logger.info(f"Process command initiated for: {input_path}")
     
+    # Retrieve verbosity and quiet status from context
+    ctx = click.get_current_context()
+    verbose_count = ctx.parent.params.get('verbose', 0)
+    quiet_mode = ctx.parent.params.get('quiet', False)
+    
     # Log configuration information
     if config:
         logger.info(f"Using configuration file: {config}")
@@ -109,12 +128,12 @@ def process(
     
     if preset:
         logger.info(f"Using LLM preset: {preset}")
-        if not quiet:
+        if not quiet_mode:
             preset_desc = get_preset_description(preset)
             click.echo(f"Using {preset} preset: {preset_desc}")
     
-    if verbose:
-        logger.info("Verbose output enabled")
+    if verbose_count > 0 and not quiet_mode:
+        click.echo(f"Verbose level: {verbose_count}")
     
     # Initialize processor using factory
     factory = TextProcessorFactory()
@@ -124,7 +143,7 @@ def process(
     if preset:
         try:
             custom_overrides = get_preset(preset)
-            if not quiet:
+            if not quiet_mode:
                 token_limit = custom_overrides.get("token_limit", "unlimited")
                 if token_limit:
                     click.echo(f"Target token limit: {token_limit:,}")
@@ -184,8 +203,8 @@ def process(
             input_path_obj, 
             output_path_obj, 
             format, 
-            verbose, 
-            quiet
+            verbose_count,
+            quiet_mode
         )
     elif input_path_obj.is_dir():
         # Process a directory using DirectoryProcessor
@@ -234,8 +253,8 @@ def _process_single_file(
     input_path: Path,
     output_path: Optional[Path],
     output_format: Optional[str],
-    verbose: bool,
-    quiet: bool
+    verbose_count: int,
+    quiet_mode: bool
 ):
     """Process a single file."""
     logger = get_logger(__name__)
@@ -247,11 +266,11 @@ def _process_single_file(
     if input_path.suffix.lower() not in extensions:
         warning_msg = f"Warning: {input_path.name} has an unsupported extension. Processing may fail."
         logger.warning(warning_msg)
-        if not quiet:
+        if not quiet_mode:
             click.echo(warning_msg)
     
     # Process the file
-    if not quiet:
+    if not quiet_mode:
         click.echo(f"Processing file: {input_path}")
     start_time = time.time()
     
@@ -262,29 +281,29 @@ def _process_single_file(
         if result.success:
             success_msg = f"Successfully processed {input_path.name} in {processing_time:.2f}s"
             
-            if verbose:
+            if verbose_count > 0:
                 # Add metrics in verbose mode
                 token_reduction = result.metrics.get("token_reduction_percent", 0)
                 success_msg += f" (Token reduction: {token_reduction:.1f}%)"
                 
-            logger.info(success_msg)
-            if not quiet:
+            if not quiet_mode:
                 click.echo(success_msg)
             
             # Show output location
             if result.output_path:
                 output_location = f"Output saved to: {result.output_path}"
                 logger.info(output_location)
-                if not quiet:
+                if not quiet_mode:
                     click.echo(output_location)
             else:
                 logger.warning("No output path returned in the result")
                 
-            # Log detailed metrics
-            _log_detailed_metrics(result, logger)
+            # Log detailed metrics if verbosity is high enough (e.g., -vv)
+            if verbose_count >= 2:
+                _log_detailed_metrics(result, logger)
                 
             # Always show token statistics unless quiet mode
-            if not quiet:
+            if not quiet_mode:
                 _display_token_statistics(
                     result.metrics, 
                     processing_time, 
