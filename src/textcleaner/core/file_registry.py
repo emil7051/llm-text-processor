@@ -25,15 +25,30 @@ class FileTypeRegistry:
         
         # Map of file extensions to supported conversion formats
         self._extension_to_formats: Dict[str, List[str]] = {
+            # PDF
             ".pdf": ["markdown", "plain_text", "json"],
+            # Word (add .doc, .odt)
             ".docx": ["markdown", "plain_text", "json"],
+            ".doc": ["markdown", "plain_text", "json"],
+            ".odt": ["markdown", "plain_text", "json"],
+            # Excel (add .xls, .ods)
             ".xlsx": ["markdown", "plain_text", "json", "csv"],
+            ".xls": ["markdown", "plain_text", "json", "csv"],
+            ".ods": ["markdown", "plain_text", "json", "csv"],
+            # PowerPoint (add .ppt, .odp)
             ".pptx": ["markdown", "plain_text", "json"],
+            ".ppt": ["markdown", "plain_text", "json"],
+            ".odp": ["markdown", "plain_text", "json"],
+            # Text & Markdown (add .markdown)
             ".txt": ["markdown", "plain_text", "json"],
             ".md": ["plain_text", "json"],
+            ".markdown": ["plain_text", "json"],
+            # HTML/XML (add .xhtml)
             ".html": ["markdown", "plain_text", "json"],
             ".htm": ["markdown", "plain_text", "json"],
+            ".xhtml": ["markdown", "plain_text", "json"],
             ".xml": ["markdown", "plain_text", "json"],
+            # Data formats (Treat as text for now)
             ".json": ["markdown", "plain_text"],
             ".csv": ["markdown", "plain_text", "json"],
         }
