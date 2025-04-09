@@ -93,7 +93,7 @@ class DirectoryProcessor:
                 should_process = extension_process_cache.get(file_ext_with_dot)
                 if should_process is None:
                     # Not in cache, perform the check
-                    should_process = self.single_file_processor._should_process_file(file_path, file_extensions)
+                    should_process = self.single_file_processor._should_process_file(file_path)
                     # Store result in cache
                     extension_process_cache[file_ext_with_dot] = should_process
                 
@@ -218,10 +218,15 @@ class DirectoryProcessor:
             self.logger.info(f"Output directory: {output_dir_p}")
 
             processor = self.parallel
+            # If specific max_workers are requested, create a new processor instance for this run
+            # Otherwise, use the default processor passed during initialization.
             if max_workers is not None:
+                self.logger.debug(f"Creating temporary ParallelProcessor with max_workers={max_workers}")
+                # Ensure it's an instance of ParallelProcessor, default if not somehow passed
                 if not isinstance(processor, ParallelProcessor):
                      processor = ParallelProcessor(max_workers=max_workers)
                 else:
+                     # Create a new instance with the specified worker count
                      processor = ParallelProcessor(max_workers=max_workers)
 
             # tasks_args = [] # Removed: Will pass file_path directly
