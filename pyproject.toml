@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "textcleaner"
-version = "0.2.2"
+version = "0.2.5"
 description = "A tool for converting various file formats to clean, LLM-friendly text"
 readme = "README.md"
 authors = [
@@ -40,6 +40,7 @@ dependencies = [
     "requests>=2.28.1",
     "spacy>=3.4.0",
     "regex>=2022.3.15",
+    "psutil>=5.9.0",
 ]
 
 [project.urls]
