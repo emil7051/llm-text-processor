@@ -3,54 +3,73 @@
 import re
 from typing import Any, Dict, Optional
 
+# Import necessary components
+from textcleaner.utils.logging_config import get_logger
+from textcleaner.config.config_manager import ConfigManager
 
-def estimate_token_count(text: str) -> int:
-    """Estimate the number of tokens in a text string.
-    
-    This is a rough approximation based on common tokenization practices.
-    For more accurate counts, a specific tokenizer should be used.
-    
-    Args:
-        text: Text to analyze.
+try:
+    import tiktoken
+    _tiktoken_available = True
+except ImportError:
+    _tiktoken_available = False
+
+logger = get_logger(__name__)
+
+# Cache for loaded tokenizers to avoid reloading
+_tokenizer_cache: Dict[str, Any] = {}
+
+def get_tokenizer(encoding_name: str):
+    """Load and cache a tiktoken tokenizer."""
+    if not _tiktoken_available:
+        return None
         
-    Returns:
-        Estimated token count.
-    """
+    if encoding_name not in _tokenizer_cache:
+        try:
+            tokenizer = tiktoken.get_encoding(encoding_name)
+            _tokenizer_cache[encoding_name] = tokenizer
+            logger.info(f"Loaded tiktoken tokenizer: {encoding_name}")
+        except Exception as e:
+            logger.error(f"Failed to load tiktoken tokenizer '{encoding_name}': {e}. Falling back to estimation.")
+            _tokenizer_cache[encoding_name] = None # Cache failure to avoid retries
+            return None
+            
+    return _tokenizer_cache[encoding_name]
+
+def _estimate_token_count_fallback(text: str) -> int:
+    """Fallback token estimation if tiktoken is unavailable or fails."""
+    if not text:
+        return 0
+    words = text.split()
+    punct_count = len(re.findall(r'[.,!?;:]', text))
+    return len(words) + punct_count
+
+def count_tokens(text: str, config: ConfigManager) -> int:
+    """Count tokens using tiktoken based on configuration, with fallback."""
     if not text:
         return 0
         
-    # Split on whitespace
-    words = text.split()
+    encoding_name = config.get("metrics.tokenizer_encoding", "cl100k_base")
+    tokenizer = get_tokenizer(encoding_name)
     
-    # Count punctuation that would be separate tokens
-    punct_count = len(re.findall(r'[.,!?;:]', text))
-    
-    # Estimate token count (words + punctuation)
-    # This is a very rough estimate assuming:
-    # - Each word is roughly one token
-    # - Some punctuation marks are separate tokens
-    # - Some words will be split into multiple tokens
-    return len(words) + punct_count
-
+    if tokenizer:
+        try:
+            return len(tokenizer.encode(text))
+        except Exception as e:
+            logger.warning(f"Tiktoken encoding failed for text snippet (falling back to estimation): {e}")
+            return _estimate_token_count_fallback(text)
+    else:
+        # Use fallback if tiktoken isn't available or failed to load
+        return _estimate_token_count_fallback(text)
 
 def calculate_metrics(
     raw_text: str,
     processed_text: str,
     processing_time: float,
+    config: ConfigManager,
     input_file_stats: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Calculate metrics for the text processing.
+    """Calculate metrics for the text processing, using tiktoken if available."""
     
-    Args:
-        raw_text: Raw text before processing.
-        processed_text: Processed text after all transformations.
-        processing_time: Time taken for processing in seconds.
-        input_file_stats: Statistics about the input file.
-        
-    Returns:
-        Dictionary of metrics.
-    """
-    # Basic metrics
     metrics = {
         "processing_time_seconds": processing_time,
         "original_text_length": len(raw_text),
@@ -64,19 +83,21 @@ def calculate_metrics(
     else:
         metrics["text_length_reduction_percent"] = 0
         
-    # Estimate token counts
-    original_tokens = estimate_token_count(raw_text)
-    processed_tokens = estimate_token_count(processed_text)
+    # Count tokens using the new function
+    original_tokens = count_tokens(raw_text, config)
+    processed_tokens = count_tokens(processed_text, config)
     
-    metrics["original_token_estimate"] = original_tokens
-    metrics["processed_token_estimate"] = processed_tokens
+    # Update metric keys to reflect actual counting (or estimation if fallback used)
+    token_key_suffix = "_estimate" if get_tokenizer(config.get("metrics.tokenizer_encoding", "cl100k_base")) is None else ""
+    metrics[f"original_tokens{token_key_suffix}"] = original_tokens
+    metrics[f"processed_tokens{token_key_suffix}"] = processed_tokens
     
     # Calculate token reduction
     if original_tokens > 0:
         token_reduction = 100 - (processed_tokens / original_tokens * 100)
-        metrics["token_reduction_percent"] = round(token_reduction, 2)
+        metrics[f"token_reduction_percent{token_key_suffix}"] = round(token_reduction, 2)
     else:
-        metrics["token_reduction_percent"] = 0
+        metrics[f"token_reduction_percent{token_key_suffix}"] = 0
         
     # Calculate processing speed
     if processing_time > 0:
@@ -123,11 +144,13 @@ def generate_metrics_report(metrics: Dict[str, Any]) -> str:
         
     # Token metrics
     report += f"\n## Token Metrics\n"
-    report += f"- Original tokens (est.): {metrics.get('original_token_estimate', 0):,}\n"
-    report += f"- Processed tokens (est.): {metrics.get('processed_token_estimate', 0):,}\n"
+    # Dynamically adjust report labels based on whether estimation was used
+    token_label_suffix = " (est.)" if "_estimate" in next(k for k in metrics if 'original_tokens' in k) else ""
+    report += f"- Original tokens{token_label_suffix}: {metrics.get(f'original_tokens{token_key_suffix}', 0):,}\n"
+    report += f"- Processed tokens{token_label_suffix}: {metrics.get(f'processed_tokens{token_key_suffix}', 0):,}\n"
     
-    if "token_reduction_percent" in metrics:
-        report += f"- Token reduction: {metrics['token_reduction_percent']:.2f}%\n"
+    if f"token_reduction_percent{token_key_suffix}" in metrics:
+        report += f"- Token reduction{token_label_suffix}: {metrics[f'token_reduction_percent{token_key_suffix}']:.2f}%\n"
         
     # File stats
     if "input_file_stats" in metrics:

@@ -196,7 +196,9 @@ class TextProcessor:
             metrics = calculate_metrics(
                 raw_text=extracted_content,
                 processed_text=processed_text,
-                processing_time=processing_time
+                processing_time=processing_time,
+                config=self.config,
+                input_file_stats=metadata.get("file_stats")
             )
             
             self.logger.info(f"Successfully processed {input_path.name} to {output_path.name}")
