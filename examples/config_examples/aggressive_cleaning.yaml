@@ -37,6 +37,11 @@ optimization:
   simplify_references: true
   simplify_urls: true
   max_line_length: 80
+  domain_abbreviations: ["technical", "academic", "business"]  # Enable common domain abbreviations
+  optimize_temporal: true   # Enable temporal expression optimization
+  use_stanford_nlp: false   # Use regex-based optimization for better performance
+  simplify_vocabulary: true  # Enable vocabulary simplification with WordNet
+  min_word_length: 4  # Consider words of 4+ letters for simplification
   
 output:
   default_format: "plain_text"

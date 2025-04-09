@@ -1,6 +1,0 @@
-filename,file_type,success,error,input_size_bytes,output_size_bytes,size_reduction_percent,token_reduction_percent,processing_time_seconds,output_path
-P1752-Retail-electricity-and-gas-rip-offs-AGL-and-Origin-Web-1 (1).pdf,.pdf,False,'PDFConverter' object has no attribute 'convert_to_text',580815,0,0.00%,N/A,N/A,
-Budget template.xlsx,.xlsx,False,'OfficeConverter' object has no attribute 'convert_to_text',57573,0,0.00%,N/A,N/A,
-Policy Comparison.pdf,.pdf,False,'PDFConverter' object has no attribute 'convert_to_text',443981,0,0.00%,N/A,N/A,
-Bonus-Clauses-Daddy-BabyGirl.pdf,.pdf,False,'PDFConverter' object has no attribute 'convert_to_text',3541677,0,0.00%,N/A,N/A,
-BalanceConfirmation.pdf,.pdf,False,'PDFConverter' object has no attribute 'convert_to_text',8436,0,0.00%,N/A,N/A,

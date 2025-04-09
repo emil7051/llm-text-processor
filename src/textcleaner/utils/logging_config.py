@@ -1,100 +1,42 @@
-"""Logging configuration for the text processor."""
+"""Logging configuration for TextCleaner."""
 
-import os
 import logging
-import logging.config
-from pathlib import Path
-from typing import Optional, Union, Dict, Any
-
-# Constants for logging
-LOG_LEVELS = {
-    "DEBUG": logging.DEBUG,
-    "INFO": logging.INFO,
-    "WARNING": logging.WARNING,
-    "ERROR": logging.ERROR,
-    "CRITICAL": logging.CRITICAL,
-}
-
-# Default log format
-DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+import sys
+from typing import Optional
 
 
-def configure_logging(
-    log_level: str = "INFO",
-    log_file: Optional[Union[str, Path]] = None,
-    log_format: str = DEFAULT_LOG_FORMAT
-) -> None:
-    """Configure logging for the application.
+def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
+    """Get a logger with the specified name and level.
     
     Args:
-        log_level: Logging level as string (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-        log_file: Optional path to log file. If None, logs only to console.
-        log_format: Format string for log messages.
-    """
-    # Normalize log level
-    log_level = log_level.upper()
-    if log_level not in LOG_LEVELS:
-        log_level = "INFO"
+        name: Name of the logger
+        level: Logging level (if None, uses INFO level)
     
-    # Set up handlers
-    handlers: Dict[str, Dict[str, Any]] = {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": log_level,
-            "formatter": "standard",
-            "stream": "ext://sys.stdout",
-        }
-    }
-    
-    # Add file handler if log_file is specified
-    if log_file:
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-            
-        handlers["file"] = {
-            "class": "logging.FileHandler",
-            "level": log_level,
-            "formatter": "standard",
-            "filename": log_file,
-            "mode": "a",
-            "encoding": "utf-8",
-        }
-    
-    # Configure logging
-    config = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "standard": {
-                "format": log_format,
-            },
-        },
-        "handlers": handlers,
-        "loggers": {
-            "": {  # Root logger
-                "handlers": list(handlers.keys()),
-                "level": log_level,
-                "propagate": True,
-            },
-            "textcleaner": {
-                "handlers": list(handlers.keys()),
-                "level": log_level,
-                "propagate": False,
-            },
-        },
-    }
-    
-    logging.config.dictConfig(config)
-
-
-def get_logger(name: str) -> logging.Logger:
-    """Get a logger with the specified name.
-    
-    Args:
-        name: Name for the logger, typically the module name.
-        
     Returns:
-        Configured logger instance.
+        Configured logger
     """
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    
+    # Set default level if not provided
+    if level is None:
+        level = logging.INFO
+        
+    logger.setLevel(level)
+    
+    # Only add handlers if they don't exist yet
+    if not logger.handlers:
+        # Console handler
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(level)
+        
+        # Format
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        console_handler.setFormatter(formatter)
+        
+        # Add handler to logger
+        logger.addHandler(console_handler)
+    
+    return logger

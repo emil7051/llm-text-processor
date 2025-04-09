@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from textcleaner.config.config_manager import ConfigManager
 
+# Import specific converter implementations here
+# Removed direct imports to avoid circular dependency
+# Imports are now done inside methods where needed or at the bottom
+
 
 class BaseConverter(ABC):
     """Base class for all file format converters.
@@ -95,9 +99,56 @@ class ConverterRegistry:
             config: Configuration manager instance to pass to converters.
         """
         self.config = config or ConfigManager()
-        self.converters: List[BaseConverter] = []
+        self.converters: List['BaseConverter'] = [] # Use forward reference string
     
-    def register(self, converter: BaseConverter) -> None:
+    def populate_registry(self) -> None:
+        """Register all standard converters with the registry using the current config."""
+        # Import here to avoid circular dependency at module level
+        from textcleaner.converters.pdf_converter import PDFConverter
+        from textcleaner.converters.office_converter import OfficeConverter
+        from textcleaner.converters.html_converter import HTMLConverter
+        from textcleaner.converters.text_converter import TextConverter
+        from textcleaner.converters.markdown_converter import MarkdownConverter
+
+        if not self.config:
+            raise RuntimeError("Registry must have a config set before populating.")
+
+        config = self.config
+
+        # Clear existing converters before repopulating
+        self.converters = []
+
+        # Register the PDF converter
+        self.register(PDFConverter(config=config))
+
+        # Register the Office document converter with specific config values
+        self.register(OfficeConverter(
+            extract_comments=config.get("formats.office.extract_comments", False),
+            extract_tracked_changes=config.get("formats.office.extract_tracked_changes", False),
+            extract_hidden_content=config.get("formats.office.extract_hidden_content", False),
+            max_excel_rows=config.get("formats.office.max_excel_rows", 1000),
+            max_excel_cols=config.get("formats.office.max_excel_cols", 20),
+            config=config
+        ))
+
+        # Register the HTML/XML converter with specific config values
+        self.register(HTMLConverter(
+            parser=config.get("converters.html.parser", "html.parser"),
+            remove_comments=config.get("converters.html.remove_comments", True),
+            remove_scripts=config.get("converters.html.remove_scripts", True),
+            remove_styles=config.get("converters.html.remove_styles", True),
+            extract_metadata=config.get("converters.html.extract_metadata", True),
+            preserve_links=config.get("converters.html.preserve_links", True),
+            config=config
+        ))
+
+        # Register the plain text converter
+        self.register(TextConverter(config=config))
+
+        # Register the markdown converter
+        self.register(MarkdownConverter(config=config))
+
+    def register(self, converter: 'BaseConverter') -> None: # Use forward reference string
         """Register an instantiated converter.
         
         Args:
@@ -144,7 +195,7 @@ class ConverterRegistry:
         for converter in self.converters:
             converter.config = config
         
-    def find_converter(self, file_path: Union[str, Path]) -> Optional[BaseConverter]:
+    def find_converter(self, file_path: Union[str, Path]) -> Optional['BaseConverter']: # Use forward reference string
         """Find a converter that can handle the given file.
         
         Args:

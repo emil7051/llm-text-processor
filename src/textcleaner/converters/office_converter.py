@@ -7,11 +7,17 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Document processing libraries
 import docx
+from docx.opc.exceptions import PackageNotFoundError
 import pandas as pd
 from pptx import Presentation
+from pptx.exc import PackageNotFoundError as PptxPackageNotFoundError
 
 from textcleaner.converters.base import BaseConverter
 from textcleaner.config.config_manager import ConfigManager
+from textcleaner.utils.logging_config import get_logger
+from textcleaner.utils import office_processing as op_utils # Import the new utility module
+
+logger = get_logger(__name__)
 
 
 class OfficeConverter(BaseConverter):
@@ -23,11 +29,22 @@ class OfficeConverter(BaseConverter):
     - PowerPoint presentations (.ppt, .pptx, .odp)
     """
     
-    def __init__(self, config: Optional[ConfigManager] = None):
+    def __init__(self, 
+                 extract_comments: bool,
+                 extract_tracked_changes: bool,
+                 extract_hidden_content: bool,
+                 max_excel_rows: int,
+                 max_excel_cols: int,
+                 config: Optional[ConfigManager] = None):
         """Initialize the Office document converter.
         
         Args:
-            config: Configuration manager instance.
+            extract_comments: Whether to attempt extracting comments.
+            extract_tracked_changes: Whether to attempt extracting tracked changes.
+            extract_hidden_content: Whether to attempt extracting hidden content.
+            max_excel_rows: Maximum rows to extract from Excel sheets.
+            max_excel_cols: Maximum columns to extract from Excel sheets.
+            config: Configuration manager instance (passed to BaseConverter).
         """
         super().__init__(config)
         self.supported_extensions = [
@@ -41,12 +58,12 @@ class OfficeConverter(BaseConverter):
             ".odt", ".ods", ".odp"
         ]
         
-        # Get Office-specific configuration
-        self.extract_comments = self.config.get("formats.office.extract_comments", False)
-        self.extract_tracked_changes = self.config.get("formats.office.extract_tracked_changes", False)
-        self.extract_hidden_content = self.config.get("formats.office.extract_hidden_content", False)
-        self.max_excel_rows = self.config.get("formats.office.max_excel_rows", 1000)
-        self.max_excel_cols = self.config.get("formats.office.max_excel_cols", 20)
+        # Store specific configuration values
+        self.extract_comments = extract_comments
+        self.extract_tracked_changes = extract_tracked_changes
+        self.extract_hidden_content = extract_hidden_content
+        self.max_excel_rows = max_excel_rows
+        self.max_excel_cols = max_excel_cols
         
     def convert(self, file_path: Union[str, Path]) -> Tuple[str, Dict[str, Any]]:
         """Convert an Office document to text and extract metadata.
@@ -85,6 +102,14 @@ class OfficeConverter(BaseConverter):
                 
         except Exception as e:
             raise RuntimeError(f"Error extracting text from office document: {str(e)}") from e
+        except (ValueError, PackageNotFoundError, PptxPackageNotFoundError, pd.errors.ParserError, IOError) as e:
+            # Catch specific known errors from libraries or file issues
+            logger.error(f"Failed to process Office file {file_path} ({type(e).__name__}): {e}")
+            raise RuntimeError(f"Failed to process Office file: {str(e)}") from e
+        except Exception as e:
+            # Catch truly unexpected errors during routing/processing
+            logger.exception(f"Unexpected error processing Office file {file_path}")
+            raise RuntimeError(f"Unexpected error processing Office file: {str(e)}") from e
             
     def _convert_word_document(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
         """Convert a Word document to text.
@@ -102,9 +127,17 @@ class OfficeConverter(BaseConverter):
         
         if file_extension == ".docx":
             try:
-                return self._convert_docx(file_path)
+                doc = docx.Document(file_path)
+                text, doc_metadata = op_utils.process_docx(file_path, doc)
+                # Merge base stats with specific doc metadata
+                metadata = {"file_stats": self.get_stats(file_path), **doc_metadata}
+                return text, metadata
+            except PackageNotFoundError as e:
+                 logger.error(f"Could not find/read DOCX package {file_path}: {e}")
+                 raise RuntimeError(f"Could not read DOCX file: {str(e)}") from e
             except Exception as e:
-                raise RuntimeError(f"Error extracting text from DOCX: {str(e)}") from e
+                 logger.exception(f"Unexpected error converting DOCX {file_path}")
+                 raise RuntimeError(f"Unexpected error converting DOCX: {str(e)}") from e
         else:
             # For .doc and .odt, use LibreOffice conversion if available
             # Otherwise, provide a placeholder and message
@@ -114,104 +147,6 @@ class OfficeConverter(BaseConverter):
                 {"file_stats": self.get_stats(file_path)}
             )
     
-    def _convert_docx(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
-        """Convert a DOCX file to text.
-        
-        Args:
-            file_path: Path to the DOCX file.
-            
-        Returns:
-            Tuple of (extracted_text, metadata_dict).
-        """
-        doc = docx.Document(file_path)
-        text_parts = []
-        
-        # Extract metadata
-        metadata = {
-            "file_stats": self.get_stats(file_path),
-            "paragraph_count": len(doc.paragraphs),
-            "section_count": len(doc.sections),
-        }
-        
-        # Try to extract core properties
-        try:
-            core_props = doc.core_properties
-            if core_props.title:
-                metadata["title"] = core_props.title
-            if core_props.author:
-                metadata["author"] = core_props.author
-            if core_props.last_modified_by:
-                metadata["last_modified_by"] = core_props.last_modified_by
-        except:
-            pass
-            
-        # Process the document structure
-        
-        # Add title if available
-        if "title" in metadata:
-            text_parts.append(f"# {metadata['title']}\n")
-        else:
-            # Use filename as title if no title in metadata
-            text_parts.append(f"# {file_path.stem}\n")
-        
-        # Process paragraphs
-        in_list = False
-        current_heading_level = 0
-        
-        for paragraph in doc.paragraphs:
-            # Skip empty paragraphs
-            if not paragraph.text.strip():
-                # Add a newline to preserve paragraph breaks
-                text_parts.append("")
-                continue
-                
-            # Check for headings
-            if paragraph.style.name.startswith('Heading'):
-                heading_level = int(paragraph.style.name[-1])
-                prefix = '#' * heading_level
-                text_parts.append(f"\n{prefix} {paragraph.text}\n")
-                current_heading_level = heading_level
-                in_list = False
-                continue
-                
-            # Check for list items
-            if paragraph.style.name.startswith('List'):
-                if not in_list:
-                    text_parts.append("")
-                    in_list = True
-                text_parts.append(f"* {paragraph.text}")
-                continue
-            
-            # Regular paragraph
-            in_list = False
-            text_parts.append(paragraph.text)
-            
-        # Extract tables
-        table_count = 0
-        for table in doc.tables:
-            table_count += 1
-            text_parts.append(f"\n### Table {table_count}\n")
-            
-            rows = []
-            for i, row in enumerate(table.rows):
-                if i == 0:
-                    # Header row
-                    header = " | ".join(cell.text for cell in row.cells)
-                    rows.append(f"| {header} |")
-                    # Add separator row
-                    rows.append(f"| {' | '.join(['---'] * len(row.cells))} |")
-                else:
-                    # Data row
-                    data = " | ".join(cell.text for cell in row.cells)
-                    rows.append(f"| {data} |")
-            
-            text_parts.append("\n".join(rows))
-            text_parts.append("\n")
-            
-        metadata["table_count"] = table_count
-            
-        return "\n".join(text_parts), metadata
-        
     def _convert_excel_spreadsheet(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
         """Convert an Excel spreadsheet to text.
         
@@ -233,78 +168,28 @@ class OfficeConverter(BaseConverter):
             else:  # .xlsx and .ods
                 excel = pd.ExcelFile(file_path, engine='openpyxl')
                 
-            text_parts = [f"# {file_path.name}\n"]
-            sheet_count = len(excel.sheet_names)
-            
-            metadata = {
-                "file_stats": self.get_stats(file_path),
-                "sheet_count": sheet_count,
-                "sheets": {}
-            }
-            
-            # Process each sheet
-            for sheet_index, sheet_name in enumerate(excel.sheet_names):
-                clean_name = re.sub(r'[^\w\s.-]', '_', sheet_name)
-                
-                # Add sheet as a section header
-                if sheet_count > 1:
-                    text_parts.append(f"## Sheet: {clean_name}\n")
-                
-                # Read the sheet data
-                try:
-                    df = pd.read_excel(excel, sheet_name=sheet_name)
-                    
-                    # Add sheet info to metadata
-                    metadata["sheets"][clean_name] = {
-                        "row_count": len(df),
-                        "column_count": len(df.columns),
-                    }
-                    
-                    # Apply row and column limits
-                    if len(df) > self.max_excel_rows:
-                        df = df.head(self.max_excel_rows)
-                        text_parts.append(f"*Note: Table truncated to {self.max_excel_rows} rows*\n")
-                        
-                    if len(df.columns) > self.max_excel_cols:
-                        df = df.iloc[:, :self.max_excel_cols]
-                        text_parts.append(f"*Note: Table truncated to {self.max_excel_cols} columns*\n")
-                    
-                    # Handle empty dataframe
-                    if df.empty:
-                        text_parts.append("*Empty sheet*\n")
-                        continue
-                        
-                    # Replace NaN with empty string
-                    df = df.fillna("")
-                    
-                    # Convert column names to strings
-                    df.columns = df.columns.astype(str)
-                    
-                    # Generate markdown table
-                    header = "| " + " | ".join(str(col) for col in df.columns) + " |"
-                    separator = "| " + " | ".join(["---"] * len(df.columns)) + " |"
-                    
-                    rows = []
-                    for _, row in df.iterrows():
-                        row_str = "| " + " | ".join(str(val).replace("\n", "<br>") for val in row.values) + " |"
-                        rows.append(row_str)
-                    
-                    text_parts.append(header)
-                    text_parts.append(separator)
-                    text_parts.extend(rows)
-                    text_parts.append("\n")
-                    
-                except Exception as sheet_error:
-                    text_parts.append(f"*Error reading sheet {clean_name}: {str(sheet_error)}*\n")
-                
-                # Add separator between sheets
-                if sheet_index < sheet_count - 1:
-                    text_parts.append("---\n")
-            
-            return "\n".join(text_parts), metadata
+            # Use the utility function for processing
+            text, excel_metadata = op_utils.process_excel(
+                file_path,
+                excel,
+                self.max_excel_rows,
+                self.max_excel_cols
+            )
+            # Merge base stats with specific excel metadata
+            metadata = {"file_stats": self.get_stats(file_path), **excel_metadata}
+            return text, metadata
             
         except Exception as e:
             raise RuntimeError(f"Error extracting text from Excel file: {str(e)}") from e
+        except pd.errors.ParserError as e:
+            logger.error(f"Pandas parsing error reading Excel file {file_path}: {e}")
+            raise RuntimeError(f"Failed to parse Excel file: {str(e)}") from e
+        except (IOError, ValueError) as e: # Catch file access or engine errors
+            logger.error(f"IO/Value error reading Excel file {file_path}: {e}")
+            raise RuntimeError(f"Failed to read Excel file: {str(e)}") from e
+        except Exception as e:
+            logger.exception(f"Unexpected error extracting from Excel file {file_path}")
+            raise RuntimeError(f"Unexpected error reading Excel file: {str(e)}") from e
             
     def _convert_powerpoint_presentation(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
         """Convert a PowerPoint presentation to text.
@@ -322,9 +207,17 @@ class OfficeConverter(BaseConverter):
         
         if file_extension == ".pptx":
             try:
-                return self._convert_pptx(file_path)
+                prs = Presentation(file_path)
+                text, pptx_metadata = op_utils.process_pptx(file_path, prs)
+                # Merge base stats with specific pptx metadata
+                metadata = {"file_stats": self.get_stats(file_path), **pptx_metadata}
+                return text, metadata
+            except PptxPackageNotFoundError as e:
+                logger.error(f"Could not find/read PPTX package {file_path}: {e}")
+                raise RuntimeError(f"Could not read PPTX file: {str(e)}") from e
             except Exception as e:
-                raise RuntimeError(f"Error extracting text from PPTX: {str(e)}") from e
+                logger.exception(f"Unexpected error converting PPTX {file_path}")
+                raise RuntimeError(f"Unexpected error converting PPTX: {str(e)}") from e
         else:
             # For .ppt and .odp, use a placeholder
             return (
@@ -332,54 +225,3 @@ class OfficeConverter(BaseConverter):
                 f"*This presentation format ({file_extension}) requires additional processing.*\n\n",
                 {"file_stats": self.get_stats(file_path)}
             )
-    
-    def _convert_pptx(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
-        """Convert a PPTX file to text.
-        
-        Args:
-            file_path: Path to the PPTX file.
-            
-        Returns:
-            Tuple of (extracted_text, metadata_dict).
-        """
-        prs = Presentation(file_path)
-        text_parts = [f"# {file_path.name}\n"]
-        
-        metadata = {
-            "file_stats": self.get_stats(file_path),
-            "slide_count": len(prs.slides),
-        }
-        
-        # Process each slide
-        for i, slide in enumerate(prs.slides):
-            # Add slide number and title
-            slide_num = i + 1
-            text_parts.append(f"## Slide {slide_num}")
-            
-            # Add slide title if available
-            if slide.shapes.title and slide.shapes.title.text:
-                text_parts.append(f": {slide.shapes.title.text}\n")
-            else:
-                text_parts.append("\n")
-            
-            # Extract text from all shapes in the slide
-            shape_texts = []
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text:
-                    # Skip the title as we've already added it
-                    if shape == slide.shapes.title:
-                        continue
-                    # Add shape text
-                    shape_texts.append(shape.text)
-            
-            # Add bullet points for shape texts if there are multiple
-            if len(shape_texts) > 1:
-                for text in shape_texts:
-                    text_parts.append(f"* {text}")
-            elif shape_texts:
-                text_parts.append(shape_texts[0])
-            
-            # Add a divider between slides
-            text_parts.append("\n---\n")
-        
-        return "\n".join(text_parts), metadata

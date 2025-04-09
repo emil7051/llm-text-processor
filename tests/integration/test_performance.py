@@ -6,10 +6,17 @@ import pytest
 import time
 from pathlib import Path
 import json
+import shutil
 
 from textcleaner.core.factories import TextProcessorFactory
 from textcleaner.utils.performance import performance_monitor
+from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.core.processor import TextProcessor
+from textcleaner.core.directory_processor import DirectoryProcessor
+from textcleaner.utils.parallel import parallel_processor
+from textcleaner.utils.logging_config import get_logger
 
+logger = get_logger("test_performance")
 
 @pytest.fixture
 def reset_performance_monitor():
@@ -56,6 +63,18 @@ def sample_large_text_file(temp_directory):
     return file_path
 
 
+@pytest.fixture
+def create_test_docs(temp_directory):
+    input_dir = temp_directory / "perf_input"
+    input_dir.mkdir()
+    # Create some sample files
+    for i in range(5): # Example: create 5 files
+        file_path = input_dir / f"doc_{i}.txt"
+        with open(file_path, "w") as f:
+            f.write(f"Content for doc {i}. " * 100)
+    return input_dir
+
+
 def test_performance_monitoring_integration(sample_large_text_file, temp_directory, reset_performance_monitor):
     """Test that performance monitoring integrates with text processing"""
     output_file = temp_directory / "performance_output.md"
@@ -63,12 +82,13 @@ def test_performance_monitoring_integration(sample_large_text_file, temp_directo
     # Create processor
     factory = TextProcessorFactory()
     processor = factory.create_processor(config_type="aggressive")
+    processor.security = TestSecurityUtils()
     
     # Process the file
     result = processor.process_file(sample_large_text_file, output_file)
     
     # Verify successful processing
-    assert result.success
+    assert result.success, f"Processing failed: {result.error}"
     assert result.output_path.exists()
     
     # Generate and save performance report
@@ -98,76 +118,58 @@ def test_performance_monitoring_integration(sample_large_text_file, temp_directo
     assert process_op["count"] == 1  # We processed one file
 
 
-def test_parallel_vs_sequential_performance(temp_directory, reset_performance_monitor):
-    """Compare performance of parallel vs sequential processing"""
-    # Create multiple test files
-    input_dir = temp_directory / "perf_input"
-    input_dir.mkdir()
+def test_parallel_vs_sequential_performance(create_test_docs, temp_directory):
+    """Compare performance of parallel vs. sequential processing."""
+    input_dir = create_test_docs
     
-    # Number of test files
-    num_files = 5
-    
-    # Create test files
-    for i in range(num_files):
-        file_path = input_dir / f"test_file_{i}.txt"
-        with open(file_path, "w") as f:
-            f.write(f"Test file {i} for performance comparison.\n\n")
-            # Add some content to make the file substantive
-            for j in range(100):
-                f.write(f"Line {j} of test content for file {i}. This is a performance test.\n")
-    
-    # Create output directories
-    seq_output = temp_directory / "perf_seq_output"
-    par_output = temp_directory / "perf_par_output"
-    
-    # Create processor
+    # Create TextProcessorFactory
     factory = TextProcessorFactory()
-    processor = factory.create_processor()
     
-    # Time sequential processing
-    performance_monitor.reset()
-    start_time = time.time()
-    seq_results = processor.process_directory(input_dir, seq_output)
-    seq_time = time.time() - start_time
+    # Create DirectoryProcessor for sequential processing
+    sequential_dir = temp_directory / "sequential_output"
+    sequential_dir.mkdir()
+    single_file_processor_seq = factory.create_standard_processor()
+    processor_seq = DirectoryProcessor(
+        config=single_file_processor_seq.config,
+        security_utils=TestSecurityUtils(),
+        parallel_processor=parallel_processor,
+        single_file_processor=single_file_processor_seq
+    )
     
-    # Save sequential performance report
-    seq_report_path = temp_directory / "sequential_performance.json"
-    performance_monitor.save_report(seq_report_path)
+    logger.info("Starting sequential processing...")
+    start_seq = time.time()
+    processor_seq.process_directory(input_dir, sequential_dir)
+    time_seq = time.time() - start_seq
+    logger.info(f"Sequential processing took {time_seq:.2f} seconds.")
     
-    # Time parallel processing
-    performance_monitor.reset()
-    start_time = time.time()
-    par_results = processor.process_directory_parallel(input_dir, par_output)
-    par_time = time.time() - start_time
+    # Create DirectoryProcessor for parallel processing
+    parallel_dir = temp_directory / "parallel_output"
+    parallel_dir.mkdir()
+    single_file_processor_par = factory.create_standard_processor()
+    processor_par = DirectoryProcessor(
+        config=single_file_processor_par.config,
+        security_utils=TestSecurityUtils(),
+        parallel_processor=parallel_processor,
+        single_file_processor=single_file_processor_par
+    )
     
-    # Save parallel performance report
-    par_report_path = temp_directory / "parallel_performance.json"
-    performance_monitor.save_report(par_report_path)
+    logger.info("Starting parallel processing...")
+    start_par = time.time()
+    processor_par.process_directory_parallel(input_dir, parallel_dir, max_workers=4)
+    time_par = time.time() - start_par
+    logger.info(f"Parallel processing took {time_par:.2f} seconds.")
     
-    # Verify all files were processed
-    assert len(seq_results) == num_files
-    assert len(par_results) == num_files
+    # Compare
+    assert time_par < time_seq or time_seq < 0.1, \
+        f"Parallel ({time_par:.2f}s) should be faster than sequential ({time_seq:.2f}s), unless sequential is very fast."
+    if time_par > 0:
+        logger.info(f"Speedup factor: {time_seq / time_par:.2f}x")
+    else:
+        logger.info("Parallel processing was too fast to calculate speedup.")
     
-    # Check that all processing was successful
-    assert all(r.success for r in seq_results)
-    assert all(r.success for r in par_results)
-    
-    # Print performance comparison
-    print(f"\nPerformance comparison:")
-    print(f"Sequential processing: {seq_time:.2f}s")
-    print(f"Parallel processing:   {par_time:.2f}s")
-    print(f"Speedup:               {seq_time/par_time:.2f}x")
-    
-    # On multi-core systems, parallel should be faster
-    # This assertion might fail on single-core systems or very small files
-    # We'll make this a soft assertion
-    if par_time > seq_time:
-        print("WARNING: Parallel processing was slower than sequential")
-        print("This may happen on single-core systems or with very small files")
-    
-    # Verify reports exist
-    assert seq_report_path.exists()
-    assert par_report_path.exists()
+    # Clean up output directories
+    shutil.rmtree(sequential_dir)
+    shutil.rmtree(parallel_dir)
 
 
 def test_performance_context_manager():

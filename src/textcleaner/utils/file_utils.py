@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import Path
-from typing import List, Set, Tuple, Union
+from typing import List, Set, Tuple, Union, Optional, Generator
 
 
 def sanitize_filename(filename: str) -> str:
@@ -15,7 +15,10 @@ def sanitize_filename(filename: str) -> str:
     Returns:
         Sanitized filename.
     """
-    # Replace characters that are unsafe for filenames
+    # First replace control characters (like \n, \t) with underscores
+    filename = re.sub(r'[\x00-\x1F\x7F]', '_', filename)
+    
+    # Replace other characters that are unsafe for filenames
     return re.sub(r'[^\w\s.-]', '_', filename)
 
 
@@ -40,50 +43,33 @@ def get_supported_extensions() -> Set[str]:
     }
 
 
-def find_files(
-    directory: Union[str, Path],
-    extensions: Set[str] = None,
-    recursive: bool = True
-) -> List[Path]:
-    """Find files with specified extensions in a directory.
-    
+def find_files(directory: Path, recursive: bool = True) -> Generator[Path, None, None]:
+    """Yields files found in a directory, optionally recursively.
+
     Args:
-        directory: Directory to search in.
-        extensions: Set of file extensions to look for (with leading dot).
-            If None, all supported extensions are used.
-        recursive: Whether to search in subdirectories.
-        
-    Returns:
-        List of paths to matching files.
-        
+        directory: The directory path to search.
+        recursive: If True, searches subdirectories recursively.
+
+    Yields:
+        Path objects for each file found.
+
     Raises:
-        FileNotFoundError: If the directory doesn't exist.
+        FileNotFoundError: If the directory does not exist.
+        NotADirectoryError: If the path is not a directory.
     """
-    if isinstance(directory, str):
-        directory = Path(directory)
-        
-    if not directory.exists() or not directory.is_dir():
+    if not directory.exists():
         raise FileNotFoundError(f"Directory not found: {directory}")
-        
-    if extensions is None:
-        extensions = get_supported_extensions()
-        
-    found_files = []
-    
+    if not directory.is_dir():
+        raise NotADirectoryError(f"Path is not a directory: {directory}")
+
     if recursive:
-        # Search recursively
-        for root, _, files in os.walk(directory):
-            for file in files:
-                file_path = Path(root) / file
-                if file_path.suffix.lower() in extensions:
-                    found_files.append(file_path)
+        for item in directory.rglob("*"):
+            if item.is_file():
+                yield item
     else:
-        # Only search in top directory
-        for file_path in directory.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in extensions:
-                found_files.append(file_path)
-                
-    return found_files
+        for item in directory.glob("*"):
+            if item.is_file():
+                yield item
 
 
 def ensure_dir_exists(directory: Union[str, Path]) -> Path:
@@ -140,3 +126,40 @@ def split_path_by_extension(path: Union[str, Path]) -> Tuple[Path, str]:
         path = Path(path)
         
     return path.with_suffix(''), path.suffix.lower()
+
+
+def get_default_extension(format_name: str, file_registry: 'FileTypeRegistry') -> str:
+    """Get the default file extension for a format using the file registry."""
+    # Forward type hint needed
+    from textcleaner.core.file_registry import FileTypeRegistry 
+    if not isinstance(file_registry, FileTypeRegistry):
+         # Fallback or raise error if registry not provided correctly
+         # Simple fallback for common cases:
+         mapping = {"markdown": "md", "plain_text": "txt", "json": "json", "csv": "csv"}
+         return mapping.get(format_name, format_name) # Default to format name itself
+        
+    return file_registry.get_default_extension(format_name)
+        
+
+def get_format_from_extension(extension: str) -> str:
+    """Attempt to guess format name from file extension."""
+    ext_lower = extension.lower().lstrip('.')
+    mapping = {
+        "md": "markdown",
+        "txt": "plain_text",
+        "json": "json",
+        "csv": "csv",
+        "html": "html",
+        "htm": "html",
+        "xml": "xml",
+        "pdf": "pdf",
+        "docx": "docx",
+        "doc": "doc",
+        "xlsx": "xlsx",
+        "xls": "xls",
+        "pptx": "pptx",
+        "ppt": "ppt"
+        # Add other known mappings as needed
+    }
+    # Fallback to the extension itself if not found
+    return mapping.get(ext_lower, ext_lower)

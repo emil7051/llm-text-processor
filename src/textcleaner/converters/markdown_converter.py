@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from textcleaner.converters.base import BaseConverter
 from textcleaner.utils.logging_config import get_logger
+from textcleaner.config.config_manager import ConfigManager
 
 
 class MarkdownConverter(BaseConverter):
@@ -21,9 +22,9 @@ class MarkdownConverter(BaseConverter):
     while extracting metadata from frontmatter if present.
     """
     
-    def __init__(self):
+    def __init__(self, config: Optional[ConfigManager] = None):
         """Initialize the markdown converter."""
-        super().__init__()
+        super().__init__(config)
         self.logger = get_logger(__name__)
         self.logger.debug("Initializing MarkdownConverter")
         

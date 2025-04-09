@@ -16,22 +16,27 @@ class ConfigManager:
     def __init__(
         self, 
         config_path: Optional[str] = None, 
-        overrides: Optional[Dict[str, Any]] = None
+        overrides: Optional[Dict[str, Any]] = None,
+        initial_config: Optional[Dict[str, Any]] = None
     ):
         """Initialize the configuration manager.
         
         Args:
             config_path: Optional path to a YAML configuration file.
             overrides: Optional dictionary of configuration overrides.
+            initial_config: Optional pre-loaded configuration dictionary.
         """
-        self.config = self._load_default_config()
-        
-        if config_path:
-            user_config = self._load_from_file(config_path)
-            self._merge_config(user_config)
+        if initial_config is not None:
+            self.config = initial_config
+        else:
+            self.config = self._load_default_config()
             
-        if overrides:
-            self._merge_config(overrides)
+            if config_path:
+                user_config = self._load_from_file(config_path)
+                self._merge_config(user_config)
+            
+            if overrides:
+                self._merge_config(overrides)
     
     def _load_default_config(self) -> Dict[str, Any]:
         """Load the default configuration."""

@@ -1,1 +1,5 @@
-"""Utility functions and helpers for the text processor."""
+"""TextCleaner utility modules."""
+
+from textcleaner.utils.word_simplifier import WordNetSimplifier
+
+__all__ = ['WordNetSimplifier']

@@ -39,6 +39,7 @@ cleaning:
   remove_boilerplate: true
   remove_duplicate_content: true
   remove_irrelevant_metadata: true
+  merge_short_paragraphs: true
   
 # Token optimization settings
 optimization:
@@ -47,6 +48,16 @@ optimization:
   simplify_references: true
   simplify_urls: false
   max_line_length: 80
+  domain_abbreviations: []  # Options: legal, technical, academic, business, medical
+  # Example: domain_abbreviations: ["technical", "academic"]
+  optimize_temporal: false  # Whether to optimize temporal expressions
+  use_stanford_nlp: false   # Whether to use Stanford NLP for advanced temporal optimization
+  simplify_vocabulary: true  # Whether to simplify complex vocabulary using WordNet
+  min_word_length: 5  # Minimum word length to consider for simplification
+  download_nltk_resources: true  # Whether to download NLTK resources on startup
+  condense_repetitive_patterns: true  # Whether to condense repetitive patterns
+  remove_redundant_phrases: true  # Whether to remove redundant phrases
+  remove_excessive_punctuation: true  # Whether to remove excessive punctuation
   
 # Format-specific settings
 formats:

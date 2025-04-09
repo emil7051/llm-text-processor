@@ -1,0 +1,49 @@
+# Standard configuration settings
+general:
+  output_dir: "processed_files"
+  default_output_format: "markdown" # Default format if not specified
+  preserve_line_breaks: false
+  preserve_tables: true
+  preserve_code_blocks: true
+  normalize_unicode: true
+  remove_duplicate_lines: true
+  remove_excessive_whitespace: true
+  log_level: INFO
+
+processing:
+  clean_level: "standard"
+  remove_headers_footers: false # Standard processing keeps headers/footers
+  preserve_structure: true
+  max_concurrency: null # Use default (CPU count)
+
+html:
+  parser: "html.parser" # Default parser
+  remove_scripts: true
+  remove_styles: true
+  remove_comments: true
+  extract_metadata: true
+  preserve_links: true
+  convert_tables: true # Convert HTML tables to Markdown
+
+pdf:
+  merge_hyphenated_words: true
+  extract_images: false # Don't extract images by default
+
+output:
+  include_metadata: true
+  metadata_position: "end" # Append metadata at the end
+
+# File type registry (example, can be customized)
+file_types:
+  text:
+    extensions: [".txt", ".md", ".rst", ".log"]
+    output_formats: ["plain_text", "markdown"]
+  html:
+    extensions: [".html", ".htm", ".xhtml"]
+    output_formats: ["markdown", "plain_text", "json"]
+  pdf:
+    extensions: [".pdf"]
+    output_formats: ["markdown", "plain_text"]
+  office:
+    extensions: [".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"]
+    output_formats: ["markdown", "plain_text"] 

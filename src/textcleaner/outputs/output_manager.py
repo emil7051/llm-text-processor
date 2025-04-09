@@ -12,14 +12,6 @@ from textcleaner.config.config_manager import ConfigManager
 class BaseOutputWriter(ABC):
     """Base class for all output format writers."""
     
-    def __init__(self, config: Optional[ConfigManager] = None):
-        """Initialize the output writer.
-        
-        Args:
-            config: Configuration manager instance.
-        """
-        self.config = config or ConfigManager()
-        
     @abstractmethod
     def write(
         self, 
@@ -43,6 +35,16 @@ class BaseOutputWriter(ABC):
 class MarkdownWriter(BaseOutputWriter):
     """Writer for Markdown output format."""
     
+    def __init__(self, include_metadata: bool, metadata_position: str):
+        """Initialize the Markdown writer.
+        
+        Args:
+            include_metadata: Whether to include metadata in the output.
+            metadata_position: Position of metadata ('start' or 'end').
+        """
+        self.include_metadata = include_metadata
+        self.metadata_position = metadata_position
+        
     def write(
         self, 
         content: str, 
@@ -59,8 +61,8 @@ class MarkdownWriter(BaseOutputWriter):
         Raises:
             IOError: If the file cannot be written.
         """
-        # Check if we should include metadata
-        include_metadata = self.config.get("output.include_metadata", True)
+        # Use stored configuration values
+        include_metadata = self.include_metadata
         
         final_content = content
         
@@ -95,7 +97,7 @@ class MarkdownWriter(BaseOutputWriter):
                     metadata_section += f"- Token Reduction: {stats['token_reduction_percent']}%\n"
             
             # Append metadata to content or prepend based on config
-            if self.config.get("output.metadata_position", "end") == "end":
+            if self.metadata_position == "end":
                 final_content = content + "\n\n" + metadata_section
             else:
                 final_content = metadata_section + "\n\n" + content
@@ -308,12 +310,15 @@ class OutputManager:
         Args:
             config: Configuration manager instance.
         """
-        self.config = config or ConfigManager()
-        self.writers = {
-            "markdown": MarkdownWriter(config),
-            "plain_text": PlainTextWriter(config),
-            "json": JsonWriter(config),
-            "csv": CsvWriter(config),
+        self.config = config or ConfigManager() # Keep config for default format lookup
+        self.writers: Dict[str, BaseOutputWriter] = {
+            "markdown": MarkdownWriter(
+                include_metadata=self.config.get("output.include_metadata", True),
+                metadata_position=self.config.get("output.metadata_position", "end")
+            ),
+            "plain_text": PlainTextWriter(), # No config needed
+            "json": JsonWriter(),           # No config needed
+            "csv": CsvWriter(),             # No config needed
         }
         
     def write(
@@ -338,22 +343,35 @@ class OutputManager:
         """
         if isinstance(output_path, str):
             output_path = Path(output_path)
-            
-        # Infer format from file extension if not provided
+
+        # Normalize format aliases first
+        format_aliases = {
+            "text": "plain_text",
+            "txt": "plain_text",
+            "md": "markdown",
+        }
+        if format:
+            format = format_aliases.get(format.lower(), format.lower())
+
+
+        # Infer format from file extension if not provided or normalized
         if format is None:
             ext = output_path.suffix.lower()[1:]  # Remove leading dot
-            
-            # Map extension to format
+
+            # Map extension to format (using normalized keys)
             ext_to_format = {
                 "md": "markdown",
                 "txt": "plain_text",
+                "text": "plain_text", # Keep for extension mapping
                 "json": "json",
                 "csv": "csv",
             }
-            
-            format = ext_to_format.get(ext, self.config.get("output.default_format", "markdown"))
-        
-        # Check if format is supported
+
+            # Use config only here to get the default format if needed
+            default_format = self.config.get("output.default_format", "markdown")
+            format = ext_to_format.get(ext, default_format)
+
+        # Check if format is supported using the potentially normalized format key
         if format not in self.writers:
             raise ValueError(f"Unsupported output format: {format}")
             

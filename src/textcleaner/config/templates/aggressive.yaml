@@ -1,0 +1,11 @@
+# Aggressive configuration settings - Inherits from standard, overrides below
+processing:
+  clean_level: "aggressive"
+  remove_headers_footers: true # Aggressive processing removes headers/footers
+
+html:
+  remove_navigation: true # Also remove nav elements
+  simplify_structure: true # Attempt to simplify complex HTML
+
+pdf:
+  aggressive_cleaning: true # Use more aggressive PDF cleaning if available 

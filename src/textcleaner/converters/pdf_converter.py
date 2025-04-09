@@ -6,40 +6,43 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from PyPDF2 import PdfReader
+from PyPDF2.errors import PdfReadError
 import pdfminer
 from pdfminer.high_level import extract_text as pdfminer_extract_text
+from pdfminer.pdfparser import PDFSyntaxError
+from pdfminer.pdfdocument import PDFEncryptionError
 
 from textcleaner.converters.base import BaseConverter
 from textcleaner.config.config_manager import ConfigManager
+from textcleaner.utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class PDFConverter(BaseConverter):
     """Converter for PDF files.
     
     Extracts text and metadata from PDF files using a combination of
-    PyPDF2 and pdfminer.six for better accuracy.
+    PyPDF2 (for metadata) and pdfminer.six (for text extraction).
     """
     
     def __init__(self, config: Optional[ConfigManager] = None):
         """Initialize the PDF converter.
         
         Args:
-            config: Configuration manager instance.
+            config: Configuration manager instance (currently unused).
         """
-        super().__init__(config)
+        # Call super().__init__ but note config is not actively used here
+        # after prior refactoring moved post-processing logic.
+        super().__init__(config) 
         self.supported_extensions = [".pdf"]
         
-        # Get PDF-specific configuration
-        self.detect_columns = self.config.get("formats.pdf.detect_columns", True)
-        self.handle_tables = self.config.get("formats.pdf.handle_tables", True)
-        self.min_line_length = self.config.get("formats.pdf.min_line_length", 10)
-        self.heading_sensitivity = self.config.get("formats.pdf.heading_detection_sensitivity", 0.7)
+        # Configuration values previously used here are no longer needed
+        # as post-processing happens in the pipeline.
     
     def convert(self, file_path: Union[str, Path]) -> Tuple[str, Dict[str, Any]]:
         """Convert a PDF file to text and extract metadata.
         
-        Combines multiple extraction methods for better results and
-        attempts to preserve document structure.
+        Uses pdfminer.six for text extraction and PyPDF2 for metadata.
         
         Args:
             file_path: Path to the PDF file.
@@ -61,26 +64,40 @@ class PDFConverter(BaseConverter):
             # Extract metadata using PyPDF2
             metadata = self._extract_metadata(file_path)
             
-            # First try with PyPDF2
-            text_pypdf = self._extract_with_pypdf(file_path)
+            # Extract text using pdfminer.six
+            final_text = self._extract_with_pdfminer(file_path)
             
-            # Then try with pdfminer
-            text_pdfminer = self._extract_with_pdfminer(file_path)
-            
-            # Choose the better extraction result or combine them
-            # For now, prefer pdfminer which generally gives better results
-            # with formatting, but fall back to PyPDF2 if pdfminer fails or gives
-            # much shorter results
-            final_text = self._select_best_extraction(text_pypdf, text_pdfminer)
-            
-            # Post-process the text to clean it up and improve its structure
-            final_text = self._post_process_text(final_text)
-            
+            # Basic check if extraction returned anything
+            if not final_text:
+                logger.warning(f"PDF text extraction yielded empty result for: {file_path}")
+                
             return final_text, metadata
             
+        except (FileNotFoundError, RuntimeError) as e:
+             # Re-raise errors we expect the caller to handle
+             raise e
         except Exception as e:
-            raise RuntimeError(f"Error extracting text from PDF: {str(e)}") from e
-            
+            # Catch any other unexpected exception during the overall conversion process
+            logger.exception(f"Unexpected error during PDF conversion for {file_path}")
+            raise RuntimeError(f"Unexpected error converting PDF {file_path}: {str(e)}") from e
+        finally:
+            # Close the file handle if we opened it
+            if 'file' in locals() and not file.closed:
+                file.close()
+
+        # Check if text extraction yielded any result
+        if not final_text:
+            # If known errors occurred, raise a specific error
+            if known_error_occurred:
+                 logger.error(f"PDF conversion failed for {file_path} due to previous errors (e.g., decryption, password). Returning empty content resulted in error.")
+                 raise RuntimeError(f"PDF conversion failed for {file_path}: Could not extract text due to decryption/password error.")
+            # Otherwise, log a warning (might be a genuinely empty PDF)
+            else:
+                 logger.warning(f"PDF text extraction yielded empty result for: {file_path}")
+
+        # Return extracted text and metadata
+        return final_text, metadata
+    
     def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
         """Extract metadata from the PDF.
         
@@ -100,51 +117,30 @@ class PDFConverter(BaseConverter):
             # Get document info (title, author, etc.)
             doc_info = reader.metadata
             if doc_info:
-                if hasattr(doc_info, "title") and doc_info.title:
-                    metadata["title"] = doc_info.title
-                if hasattr(doc_info, "author") and doc_info.author:
-                    metadata["author"] = doc_info.author
-                if hasattr(doc_info, "subject") and doc_info.subject:
-                    metadata["subject"] = doc_info.subject
-                if hasattr(doc_info, "creator") and doc_info.creator:
-                    metadata["creator"] = doc_info.creator
+                # Check attributes defensively
+                metadata["title"] = getattr(doc_info, 'title', None)
+                metadata["author"] = getattr(doc_info, 'author', None)
+                metadata["subject"] = getattr(doc_info, 'subject', None)
+                metadata["creator"] = getattr(doc_info, 'creator', None)
+                # Remove None values
+                metadata = {k: v for k, v in metadata.items() if v is not None}
                 
             return metadata
             
-        except Exception as e:
-            # Return basic metadata if extraction fails
+        except (PdfReadError, IOError) as e:
+            # Specific, potentially recoverable errors related to reading the PDF
+            logger.warning(f"Could not read PDF metadata for {file_path} ({type(e).__name__}): {e}")
             return {
                 "file_stats": self.get_stats(file_path),
-                "metadata_extraction_error": str(e)
+                "metadata_extraction_error": f"PDF read error: {type(e).__name__}"
             }
-    
-    def _extract_with_pypdf(self, file_path: Path) -> str:
-        """Extract text using PyPDF2.
-        
-        Args:
-            file_path: Path to the PDF file.
-            
-        Returns:
-            Extracted text.
-        """
-        try:
-            reader = PdfReader(file_path)
-            text_parts = []
-            
-            for i, page in enumerate(reader.pages):
-                page_text = page.extract_text() or ""
-                
-                # Add page number as a separator if it's a multi-page document
-                if len(reader.pages) > 1:
-                    text_parts.append(f"\n\n## Page {i+1}\n\n")
-                    
-                text_parts.append(page_text)
-                
-            return "\n\n".join(text_parts)
-            
         except Exception as e:
-            # Return empty string on error, the pdfminer method will be used instead
-            return ""
+            # Unexpected errors during metadata extraction
+            logger.exception(f"Unexpected error extracting PDF metadata for {file_path}")
+            return {
+                "file_stats": self.get_stats(file_path),
+                "metadata_extraction_error": f"Unexpected metadata error: {str(e)}"
+            }
     
     def _extract_with_pdfminer(self, file_path: Path) -> str:
         """Extract text using pdfminer.six.
@@ -153,77 +149,17 @@ class PDFConverter(BaseConverter):
             file_path: Path to the PDF file.
             
         Returns:
-            Extracted text.
+            Extracted text, or empty string on failure.
         """
         try:
             return pdfminer_extract_text(file_path)
+        except (PDFSyntaxError, PDFEncryptionError, OSError) as e:
+            # Specific, potentially recoverable errors from pdfminer
+            logger.error(f"pdfminer extraction failed for {file_path} ({type(e).__name__}): {e}")
+            return "" # Return empty string on known extraction failures
         except Exception as e:
-            # Return empty string on error, the PyPDF2 method will be used instead
-            return ""
+            # Unexpected errors during pdfminer processing
+            logger.exception(f"Unexpected error during pdfminer extraction for {file_path}")
+            return "" # Return empty string on unexpected failures too
     
-    def _select_best_extraction(self, text_pypdf: str, text_pdfminer: str) -> str:
-        """Select the better extraction result or combine them.
-        
-        Args:
-            text_pypdf: Text extracted with PyPDF2.
-            text_pdfminer: Text extracted with pdfminer.
-            
-        Returns:
-            The best text extraction result.
-        """
-        # If one extraction is empty, use the other
-        if not text_pypdf.strip():
-            return text_pdfminer
-        if not text_pdfminer.strip():
-            return text_pypdf
-            
-        # If pdfminer result is significantly shorter, it might have failed
-        # to extract some content, so use PyPDF2 result instead
-        if len(text_pdfminer) < len(text_pypdf) * 0.5:
-            return text_pypdf
-            
-        # Otherwise, prefer pdfminer which generally gives better results with formatting
-        return text_pdfminer
-    
-    def _post_process_text(self, text: str) -> str:
-        """Clean up and improve the structure of the extracted text.
-        
-        Args:
-            text: Raw extracted text.
-            
-        Returns:
-            Processed text with improved structure.
-        """
-        if not text:
-            return text
-            
-        # Remove excessive newlines
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        
-        # Clean up whitespace
-        text = re.sub(r' {2,}', ' ', text)
-        
-        # Attempt to detect and format bullet points
-        text = re.sub(r'^\s*[•·⦿⦾⦿⁃⁌⁍◦▪▫◘◙◦➢➣➤●○◼◻►▻▷▹➔→⇒⟹⟾⟶⇝⇢⤷⟼⟿⤳⤻⤔⟴]+ *', '* ', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*[-–—] *', '* ', text, flags=re.MULTILINE)
-        
-        # Try to identify headings in the text for better structure
-        lines = text.split('\n')
-        for i in range(len(lines)):
-            line = lines[i].strip()
-            
-            # Skip lines that are already formatted as headings
-            if line.startswith('#'):
-                continue
-                
-            # Potential heading: short line (not starting with * or - for lists)
-            if line and len(line) < 60 and not line.startswith('*') and not line.startswith('-'):
-                # Check if next line is empty or if previous line is empty (heading pattern)
-                if (i+1 < len(lines) and not lines[i+1].strip()) or (i > 0 and not lines[i-1].strip()):
-                    # Determine header level based on length
-                    if len(line) < 20:
-                        lines[i] = f"## {line}"
-                    else:
-                        lines[i] = f"### {line}"
-        
-        return '\n'.join(lines)
+    # Removed _post_process_text method as it's handled by pipeline

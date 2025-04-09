@@ -145,27 +145,25 @@ python -m pytest tests/integration/test_all_file_types.py -v
 
 ```
 textcleaner/
-├── src/textcleaner/      # Main package directory
-│   ├── converters/              # File format converters
-│   │   ├── base.py             # Base converter class and registry
-│   │   ├── html_converter.py   # HTML/XML document converter
-│   │   ├── text_converter.py   # Plain text document converter
-│   │   ├── markdown_converter.py # Markdown document converter with frontmatter support
-│   │   └── ...                 # Other format converters
-│   ├── processors/              # Text processing components
-│   ├── outputs/                 # Output format writers
-│   ├── config/                  # Configuration management 
-│   │   └── config_manager.py   # Configuration loading and access
-│   ├── utils/                   # Utility functions
-│   ├── text_processor.py        # Main processor orchestration
-│   └── cli.py                   # Command line interface
-├── tests/                       # Test suite
-│   ├── unit/                    # Unit tests for individual components
-│   └── integration/             # Integration tests across file types
-│       └── test_all_file_types.py # Tests for all supported formats
-├── test_html_files/             # Test files for HTML/XML processing
-├── processed_files/             # Output directory for processed files
-└── docs/                        # Documentation
+├── src/                       # Source code
+│   └── textcleaner/           # Main package
+│       ├── cli/               # Command-line interface
+│       ├── config/            # Configuration handling
+│       ├── converters/        # File format converters
+│       ├── core/              # Core functionality
+│       ├── outputs/           # Output formatters
+│       ├── processors/        # Text processing modules
+│       ├── tools/             # Utility tools
+│       └── utils/             # Utility functions
+├── tests/                     # Tests
+│   ├── fixtures/              # Test fixtures
+│   │   ├── docs/              # Test document files
+│   │   └── html/              # Test HTML files
+│   ├── integration/           # Integration tests
+│   └── unit/                  # Unit tests
+├── examples/                  # Usage examples
+├── homebrew-formula/          # Homebrew installation scripts
+└── ...                        # Other project files
 ```
 
 ### Example Results
@@ -197,3 +195,27 @@ docker-compose run --rm app process input/file.pdf output/file.md
 ## License
 
 MIT
+
+## Recent Refactoring
+
+The codebase has been refactored to improve organization and maintainability:
+
+1. **Test organization**:
+   - All test files are now properly organized in `tests/unit/` and `tests/integration/`
+   - Unit tests are categorized by module (core, converters, config, utils)
+   - Test fixtures are consolidated in `tests/fixtures/`
+
+2. **Modular design**:
+   - Removed redundant code across test files
+   - Eliminated duplicate path handling code
+   - Centralized test file path utilities
+  
+3. **Clean code principles**:
+   - Improved code reusability with the fixtures module
+   - Removed duplicate configuration code
+   - Created consistent directory structure
+
+4. **Simplified testing**:
+   - Updated test runner script for simplicity
+   - Improved documentation for tests
+   - Added READMEs to explain directory organization

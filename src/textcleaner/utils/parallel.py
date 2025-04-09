@@ -265,8 +265,11 @@ class ResourceMonitor:
                 "cpu_percent": psutil.cpu_percent(interval=0.1),
                 "peak_cpu_percent": self.peak_cpu_percent
             }
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            self.logger.warning(f"psutil error getting resource stats: {e}")
+            return {}
         except Exception as e:
-            self.logger.error(f"Error getting resource stats: {e}")
+            self.logger.exception(f"Unexpected error getting resource stats: {e}") # Log with traceback
             return {}
 
 
@@ -332,9 +335,11 @@ class ParallelProcessor:
                 workers = self.max_workers
             
             return workers
-        
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            self.logger.warning(f"psutil error determining worker count: {e}")
+            return self.max_workers # Fallback to max workers
         except Exception as e:
-            self.logger.error(f"Error determining worker count: {e}")
+            self.logger.exception(f"Unexpected error determining worker count: {e}")
             return self.max_workers
     
     def process_items(self, 
@@ -345,7 +350,7 @@ class ParallelProcessor:
                      show_progress: bool = True,
                      progress_interval: float = 0.5,
                      timeout: Optional[float] = None,
-                     preserve_order: bool = False) -> List[ParallelResult[T, R]]:
+                     preserve_order: bool = True) -> List[ParallelResult[T, R]]:
         """Process items in parallel with enhanced tracking and resource management.
         
         Args:
@@ -357,6 +362,7 @@ class ParallelProcessor:
             progress_interval: How often to update progress (in seconds)
             timeout: Optional timeout per item (in seconds)
             preserve_order: Whether to preserve the original order of items in the results
+                           (defaults to True to ensure consistent test behavior)
             
         Returns:
             List of ParallelResult objects

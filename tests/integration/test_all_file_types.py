@@ -13,6 +13,10 @@ from pathlib import Path
 import pytest
 
 from textcleaner.core.processor import TextProcessor
+from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.core.factories import TextProcessorFactory
+from textcleaner.core.directory_processor import DirectoryProcessor
+from textcleaner.utils.parallel import parallel_processor
 
 
 @pytest.fixture(scope="module")
@@ -107,10 +111,26 @@ def test_files_dir():
         # Clean up is handled automatically by the tempfile context manager
 
 
-def test_process_all_file_types(test_files_dir):
+@pytest.fixture(scope="module")
+def directory_processor():
+    """Create a DirectoryProcessor instance for testing."""
+    factory = TextProcessorFactory()
+    # Add override for lxml parser
+    overrides = {"converters": {"html": {"parser": "lxml"}}}
+    single_file_processor = factory.create_processor(config_type="standard", custom_overrides=overrides)
+    # Instantiate DirectoryProcessor with necessary components
+    return DirectoryProcessor(
+        config=single_file_processor.config,
+        security_utils=TestSecurityUtils(), # Use relaxed security for temp dirs
+        parallel_processor=parallel_processor, # Use the singleton
+        single_file_processor=single_file_processor
+    )
+
+
+def test_process_all_file_types(test_files_dir, directory_processor):
     """Test processing all supported file types."""
-    # Initialize the text processor
-    processor = TextProcessor()
+    # Get the underlying single file processor for direct file processing test
+    processor = directory_processor.single_file_processor
     
     # Define the output directory
     output_dir = test_files_dir / "output"
@@ -137,10 +157,11 @@ def test_process_all_file_types(test_files_dir):
             output_path = output_dir / f"{file_path.stem}_{format_name}_processed.md"
             
             # Process the file with overwrite flag set to force file overwrite
-            # We directly access the config dictionary in the ConfigManager
-            if 'general' not in processor.config.config:
-                processor.config.config['general'] = {}
-            processor.config.config['general']['overwrite_existing'] = True
+            # Access the config dictionary directly since it's not a nested object
+            # processor.config.set('general.overwrite_existing', True) # Use set method
+            
+            # The process_file method doesn't automatically create the output directory structure
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
             result = processor.process_file(
                 input_path=file_path,
@@ -164,16 +185,13 @@ def test_process_all_file_types(test_files_dir):
         f"Not all formats were processed: {len(processed_files)} < {len(format_to_dir)}"
 
 
-def test_process_directory_recursive(test_files_dir):
+def test_process_directory_recursive(test_files_dir, directory_processor):
     """Test processing an entire directory recursively."""
-    # Initialize the text processor
-    processor = TextProcessor()
-    
     # Define the output directory
     output_dir = test_files_dir / "output" / "recursive"
     
-    # Process the entire directory
-    results = processor.process_directory(
+    # Process the entire directory using DirectoryProcessor
+    results = directory_processor.process_directory(
         input_dir=test_files_dir,
         output_dir=output_dir,
         output_format="markdown",
@@ -190,17 +208,14 @@ def test_process_directory_recursive(test_files_dir):
         assert result.output_path.stat().st_size > 0, f"Output file {result.output_path} is empty"
 
 
-def test_process_directory_with_filter(test_files_dir):
+def test_process_directory_with_filter(test_files_dir, directory_processor):
     """Test processing a directory with file extension filtering."""
-    # Initialize the text processor
-    processor = TextProcessor()
-    
     # Define the output directory
     output_dir = test_files_dir / "output" / "filtered"
     
-    # Process only HTML files
-    html_extensions = ["html"]
-    results = processor.process_directory(
+    # Process only HTML files using DirectoryProcessor
+    html_extensions = [".html"]
+    results = directory_processor.process_directory(
         input_dir=test_files_dir,
         output_dir=output_dir,
         output_format="markdown",
@@ -209,7 +224,12 @@ def test_process_directory_with_filter(test_files_dir):
     )
     
     # Verify only HTML files were processed
+    processed_count = 0
     for result in results:
         if result.success:
+            processed_count += 1
             assert result.input_path.suffix.lower() == ".html", \
                 f"Non-HTML file was processed: {result.input_path}"
+    
+    # Check that at least one HTML file was successfully processed
+    assert processed_count > 0, "No HTML files were successfully processed"

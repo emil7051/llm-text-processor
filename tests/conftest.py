@@ -1,13 +1,37 @@
-
 """
-Pytest configuration and shared fixtures
+Configuration file for pytest fixtures
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
-
 import pytest
+
+# Add the src directory to the Python path
+src_dir = Path(__file__).parent.parent / "src"
+sys.path.insert(0, str(src_dir))
+
+from textcleaner.utils.security import SecurityUtils, TestSecurityUtils
+
+
+@pytest.fixture
+def security_utils():
+    """Create a SecurityUtils instance for testing"""
+    return SecurityUtils()
+
+
+@pytest.fixture
+def test_security_utils():
+    """Create a TestSecurityUtils instance for testing with temp directories"""
+    return TestSecurityUtils()
+
+
+@pytest.fixture
+def temp_directory():
+    """Create a temporary directory for testing"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield Path(temp_dir)
 
 
 @pytest.fixture(scope="session")
@@ -47,13 +71,6 @@ def sample_files():
             "simple_txt": simple_txt,
             "markdown_file": markdown_file
         }
-
-
-@pytest.fixture
-def temp_directory():
-    """Create a temporary directory for test use"""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        yield Path(temp_dir)
 
 
 @pytest.fixture
