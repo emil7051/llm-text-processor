@@ -13,6 +13,74 @@ from typing import Optional, Tuple, List, Dict, Set, Any, Union
 
 from textcleaner.utils.logging_config import get_logger
 
+# --- Constants ---
+
+KB = 1024
+MB = KB * 1024
+GB = MB * 1024
+
+HASH_CHUNK_SIZE = 4096  # Size of chunks for file hashing
+SECURE_DELETE_THRESHOLD = 100 * MB  # Files smaller than this are securely overwritten
+
+# Potentially dangerous file extensions (lowercase)
+DANGEROUS_EXTENSIONS = {
+    '.exe', '.dll', '.so', '.sh', '.bat', '.cmd', '.app', 
+    '.js', '.vbs', '.ps1', '.py', '.jar', '.com', '.msi',
+    '.scr', '.php', '.asp', '.aspx', '.cgi', '.pl'
+}
+
+# Allowed MIME types for text processing
+ALLOWED_MIME_TYPES = {
+    'text/plain', 'text/html', 'text/markdown', 'text/csv',
+    'application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', # docx
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', # xlsx
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', # pptx
+    'application/rtf', 'application/json', 'application/xml'
+}
+
+# Default file size limits (in bytes)
+FILE_SIZE_LIMITS = {
+    'default': 300 * MB,  # 300MB general limit
+    'pdf': 50 * MB,       # 50MB for PDFs
+    'docx': 30 * MB,      # 30MB for Word docs
+    'xlsx': 20 * MB,      # 20MB for Excel
+    'txt': 200 * MB       # 200MB for plain text
+}
+
+# Locations that should be treated with caution
+# Note: Wildcards (*) are handled as regex patterns
+SENSITIVE_PATHS = [
+    '/etc', '/var', '/usr/bin', '/usr/sbin', '/bin', '/sbin',
+    '/System', '/Library', '/private', '/Users/*/Library',
+    'C:\\\\Windows', 'C:\\\\Program Files', 'C:\\\\Program Files (x86)',
+    'C:\\\\Users\\\\*\\\\AppData'
+]
+
+# Patterns for potential security issues in text content
+SUSPICIOUS_PATTERNS = [
+    # SQL injection patterns
+    r'(?i)(\\%27)|(\')|(\-\-)|(\%23)|(#)',
+    r'(?i)((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))',
+    # Command injection patterns
+    r'(?i)(\&\#)|(\\)|(\|)|(\;)',
+    # Path traversal
+    r'\.\.[\\/]',
+    # Script tags
+    r'(?i)<script.*?>.*?</script>',
+    # Other potentially malicious HTML
+    r'(?i)<iframe.*?>.*?</iframe>',
+    r'(?i)javascript\s*:',
+    # Base64 executable content
+    r'(?i)base64.*(?:exe|dll|bat|sh|cmd|vbs)'
+]
+
+# Initialize MIME types globally
+mimetypes.init()
+
+# --- Security Utilities Class ---
 
 class SecurityUtils:
     """Enhanced utilities for secure file handling and validation."""
@@ -21,62 +89,20 @@ class SecurityUtils:
         """Initialize security utilities."""
         self.logger = get_logger(__name__)
         
-        # Initialize MIME types
-        mimetypes.init()
-        
         # Potentially dangerous file extensions
-        self.dangerous_extensions = [
-            '.exe', '.dll', '.so', '.sh', '.bat', '.cmd', '.app', 
-            '.js', '.vbs', '.ps1', '.py', '.jar', '.com', '.msi',
-            '.scr', '.php', '.asp', '.aspx', '.cgi', '.pl'
-        ]
+        self.dangerous_extensions = DANGEROUS_EXTENSIONS
         
         # Allowed MIME types for text processing
-        self.allowed_mime_types = {
-            'text/plain', 'text/html', 'text/markdown', 'text/csv',
-            'application/pdf', 'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'application/rtf', 'application/json', 'application/xml'
-        }
+        self.allowed_mime_types = ALLOWED_MIME_TYPES
         
         # File size limits (in bytes)
-        self.file_size_limits = {
-            'default': 300 * 1024 * 1024,  # 100MB general limit
-            'pdf': 50 * 1024 * 1024,       # 50MB for PDFs
-            'docx': 30 * 1024 * 1024,      # 30MB for Word docs
-            'xlsx': 20 * 1024 * 1024,      # 20MB for Excel
-            'txt': 200 * 1024 * 1024       # 200MB for plain text
-        }
+        self.file_size_limits = FILE_SIZE_LIMITS
         
         # Locations that should be treated with caution
-        self.sensitive_paths = [
-            '/etc', '/var', '/usr/bin', '/usr/sbin', '/bin', '/sbin',
-            '/System', '/Library', '/private', '/Users/*/Library',
-            'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)',
-            'C:\\Users\\*\\AppData'
-        ]
+        self.sensitive_paths = SENSITIVE_PATHS
         
         # Patterns for potential security issues in text content
-        self.suspicious_patterns = [
-            # SQL injection patterns
-            r'(?i)(\%27)|(\')|(\-\-)|(\%23)|(#)',
-            r'(?i)((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))',
-            # Command injection patterns
-            r'(?i)(\&\#)|(\\)|(\|)|(\;)',
-            # Path traversal
-            r'\.\.[\\/]',
-            # Script tags
-            r'(?i)<script.*?>.*?</script>',
-            # Other potentially malicious HTML
-            r'(?i)<iframe.*?>.*?</iframe>',
-            r'(?i)javascript\s*:',
-            # Base64 executable content
-            r'(?i)base64.*(?:exe|dll|bat|sh|cmd|vbs)'
-        ]
+        self.suspicious_patterns = SUSPICIOUS_PATTERNS
     
     def validate_path(self, path: Path) -> Tuple[bool, Optional[str]]:
         """Validate that a path is safe to process.
@@ -117,7 +143,7 @@ class SecurityUtils:
             
         # Check suspicious patterns (excluding traversal)
         suspicious_patterns_excluding_traversal = [
-            p for p in self.suspicious_patterns if p != r'\.\.[\\/]'
+            p for p in SUSPICIOUS_PATTERNS if p != r'\.\.[\\/]'
         ]
         path_str = str(resolved_path)
         for pattern in suspicious_patterns_excluding_traversal:
@@ -127,7 +153,7 @@ class SecurityUtils:
                 return False, error
 
         # Check dangerous extensions
-        if resolved_path.is_file() and resolved_path.suffix.lower() in self.dangerous_extensions:
+        if resolved_path.is_file() and resolved_path.suffix.lower() in DANGEROUS_EXTENSIONS:
             error = f"File has a potentially dangerous extension: {resolved_path}"
             self.logger.warning(error)
             return False, error
@@ -157,7 +183,7 @@ class SecurityUtils:
     def _check_sensitive_location(self, resolved_path: Path) -> Tuple[bool, Optional[str]]:
         """Helper to check if a resolved path is in a sensitive location."""
         path_str = str(resolved_path)
-        for sensitive_path in self.sensitive_paths:
+        for sensitive_path in SENSITIVE_PATHS:
             if '*' in sensitive_path:
                 # Escape special regex characters except the asterisk
                 pattern = sensitive_path
@@ -267,14 +293,14 @@ class SecurityUtils:
             if mime_type is None:
                 # If MIME type can't be determined, we check the extension
                 ext = file_path.suffix.lower()
-                if ext in self.dangerous_extensions:
+                if ext in DANGEROUS_EXTENSIONS:
                     error = f"File has a potentially dangerous extension: {file_path}"
                     self.logger.warning(error)
                     return False, error
                 # If extension is unknown but not dangerous, allow it
                 return True, None
             
-            if mime_type not in self.allowed_mime_types:
+            if mime_type not in ALLOWED_MIME_TYPES:
                 error = f"File has disallowed MIME type: {file_path} ({mime_type})"
                 self.logger.warning(error)
                 return False, error
@@ -379,8 +405,8 @@ class SecurityUtils:
                 # Get file size
                 file_size = file_path.stat().st_size
                 
-                # For small-to-medium files (< 100MB), perform secure deletion with overwrite
-                if file_size < 100 * 1024 * 1024:  # 100MB
+                # For small-to-medium files (< SECURE_DELETE_THRESHOLD), perform secure deletion with overwrite
+                if file_size < SECURE_DELETE_THRESHOLD:
                     # Overwrite file with random data before deletion
                     with open(file_path, 'wb') as f:
                         f.write(os.urandom(file_size))
@@ -413,7 +439,7 @@ class SecurityUtils:
         sanitized = re.sub(r'javascript\s*:', '[JS REMOVED]:', sanitized, flags=re.IGNORECASE)
         
         # Check for and log suspicious patterns
-        for pattern in self.suspicious_patterns:
+        for pattern in SUSPICIOUS_PATTERNS:
             if re.search(pattern, content, re.DOTALL):
                 self.logger.warning(f"Suspicious pattern detected in content: {pattern}")
                 # We don't remove all patterns, but log them for awareness
@@ -437,7 +463,7 @@ class SecurityUtils:
             
             # Read the file in chunks to handle large files efficiently
             with open(file_path, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096), b""):
+                for byte_block in iter(lambda: f.read(HASH_CHUNK_SIZE), b""):
                     sha256_hash.update(byte_block)
                     
             return sha256_hash.hexdigest(), None
