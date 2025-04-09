@@ -23,8 +23,8 @@ class StructureProcessor(BaseProcessor):
         Args:
             preserve_headings: Whether to preserve headings.
             preserve_lists: Whether to preserve lists.
-            preserve_tables: Whether to preserve tables (currently unused).
-            preserve_links: Whether to preserve links (currently unused).
+            preserve_tables: Placeholder - currently not implemented.
+            preserve_links: Placeholder - currently not implemented.
         """
         self.preserve_headings = preserve_headings
         self.preserve_lists = preserve_lists

@@ -24,9 +24,21 @@ class ContentCleaner(BaseProcessor):
                  remove_duplicate_content: bool,
                  remove_irrelevant_metadata: bool, # Keep param for config compatibility
                  merge_short_paragraphs: bool):
-        """Initialize the content cleaner."""
+        """Initialize the content cleaner.
+        
+        Args:
+            remove_headers_footers: Remove headers/footers (also handles page numbers).
+            remove_page_numbers: Kept for config compatibility; logic is in remove_headers_footers.
+            remove_watermarks: Placeholder - currently not implemented.
+            clean_whitespace: Clean excessive whitespace.
+            normalize_unicode: Normalize unicode characters.
+            remove_boilerplate: Remove common boilerplate text.
+            remove_duplicate_content: Remove duplicate paragraphs/sections.
+            remove_irrelevant_metadata: Placeholder - currently not implemented.
+            merge_short_paragraphs: Merge adjacent short paragraphs.
+        """
         self.remove_headers_footers = remove_headers_footers
-        self.remove_page_numbers = remove_page_numbers # Unused member (logic handled by remove_headers_footers)
+        # self.remove_page_numbers = remove_page_numbers # Unused member (logic handled by remove_headers_footers)
         # self.remove_watermarks = remove_watermarks # Unused member
         self.clean_whitespace = clean_whitespace
         self.normalize_unicode = normalize_unicode
