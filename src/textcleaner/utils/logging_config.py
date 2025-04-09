@@ -27,6 +27,11 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
     
+    # Set specific (higher) log levels for noisy libraries
+    logging.getLogger("pdfminer").setLevel(logging.WARNING)
+    # Add other libraries here if needed
+    # logging.getLogger("another_library").setLevel(logging.INFO)
+
     # Remove any existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
@@ -62,7 +67,7 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
             root_logger.addHandler(file_handler)
             
             # Set specific (higher) log levels for noisy libraries
-            logging.getLogger("pdfminer").setLevel(logging.WARNING)
+            # logging.getLogger("pdfminer").setLevel(logging.WARNING)  # Moved outside this block
             # Add other libraries here if needed
             # logging.getLogger("another_library").setLevel(logging.INFO)
         except Exception as e:
