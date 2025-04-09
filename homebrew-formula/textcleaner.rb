@@ -8,10 +8,10 @@ class Textcleaner < Formula
   license "MIT"
   head "https://github.com/emil7051/textcleaner.git", branch: "main"
 
-  depends_on "python@3.8"
+  depends_on "python@3.11"
   
   def install
-    venv = virtualenv_create(libexec, Formula["python@3.8"].opt_bin/"python3")
+    venv = virtualenv_create(libexec, Formula["python@3.11"].opt_bin/"python3")
     venv.pip_install buildpath
 
     (bin/"textcleaner").write_env_script "#{libexec}/bin/textcleaner", PATH: "#{libexec}/bin:$PATH"
