@@ -650,31 +650,41 @@ class TestingSecurityUtils(SecurityUtils):
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # First, perform all standard validations from the parent class
         is_valid, error = super().validate_path(path)
 
-        # If the standard validation passed, return the result
         if is_valid:
             return True, None
 
-        # If standard validation failed, check if it was ONLY due to being
-        # in a sensitive location AND if that location is the temp directory.
-        if error and ("sensitive location" in error or "sensitive pattern" in error):
+        # Check if the failure was specifically due to a sensitive path *prefix* match
+        # AND if that path is within the allowed temporary directory.
+        # Example error: "Path starts with sensitive prefix '/private': /private/var/..."
+        if error and "Path starts with sensitive prefix" in error:
             try:
-                # Check if the path is within the system's temporary directory
                 temp_dir = Path(tempfile.gettempdir()).resolve()
                 resolved_path = path.resolve() # Resolve the path fully
-                
-                # Check if the resolved path starts with the resolved temp directory path
-                if str(resolved_path).startswith(str(temp_dir)):
-                    # Allow if the only error was sensitive location/pattern in temp dir
-                    self.logger.debug(f"Allowing path in temporary directory: {path} (Original error: {error})")
+
+                # Reuse/Adapt macOS symlink check logic from parent's _check_sensitive_location context
+                resolved_path_str = str(resolved_path)
+                temp_dir_str = str(temp_dir)
+                is_in_temp = resolved_path_str.startswith(temp_dir_str)
+                if platform.system() == "Darwin" and not is_in_temp:
+                    # Check if one starts with /private/var/ and the other /var/ and compare the rest
+                    if temp_dir_str.startswith("/var/") and resolved_path_str.startswith("/private/var/"):
+                         if resolved_path_str.startswith(temp_dir_str.replace("/var/", "/private/var/", 1)):
+                             is_in_temp = True
+                    elif temp_dir_str.startswith("/private/var/") and resolved_path_str.startswith("/var/"):
+                         if resolved_path_str.startswith(temp_dir_str.replace("/private/var/", "/var/", 1)):
+                             is_in_temp = True
+
+                if is_in_temp:
+                    # Allow *only* if the failure was due to a sensitive prefix within the temp dir
+                    self.logger.debug(f"Allowing path in temporary directory (overridden validation): {path} (Original error: {error})")
                     return True, None
             except Exception as e:
-                 # Log error during temp dir check but proceed with original failure
-                 self.logger.error(f"Error checking temporary directory for path {path}: {e}")
+                 self.logger.error(f"Error checking temporary directory for path {path} during override: {e}")
+                 # Fall through to return original error
 
-        # Otherwise, return the original failure reason from standard validation
+        # If the error was not a sensitive prefix issue, or if the temp dir check failed, return the original validation result.
         return is_valid, error
     
     def validate_output_path(self, output_path: Path) -> Tuple[bool, Optional[str]]:

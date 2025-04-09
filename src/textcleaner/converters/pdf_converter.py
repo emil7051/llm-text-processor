@@ -64,10 +64,12 @@ class PDFConverter(BaseConverter):
             # Extract text using pdfminer.six
             final_text = self._extract_with_pdfminer(file_path)
             
-            # Basic check if extraction returned anything
+            # Raise an error if extraction returned an empty string
             if not final_text:
-                logger.warning(f"PDF text extraction yielded empty result for: {file_path}")
-                
+                # Log the failure before raising
+                logger.error(f"PDF text extraction yielded empty result for: {file_path}")
+                raise RuntimeError(f"Conversion resulted in empty content for {file_path}")
+
             return final_text, metadata
             
         except (FileNotFoundError, RuntimeError) as e:
@@ -135,6 +137,15 @@ class PDFConverter(BaseConverter):
             # Specific, potentially recoverable errors from pdfminer
             logger.error(f"pdfminer extraction failed for {file_path} ({type(e).__name__}): {e}")
             return "" # Return empty string on known extraction failures
+        except ValueError as e:
+            # Catch specific Ascii85 decoding error seen in tests
+            if "Ascii85" in str(e):
+                logger.error(f"pdfminer extraction failed for {file_path} due to Ascii85 decoding issue: {e}")
+                return "" # Treat as known failure
+            else:
+                # Re-raise other ValueErrors
+                logger.exception(f"Unexpected ValueError during pdfminer extraction for {file_path}")
+                raise # Re-raise unexpected ValueError
         except Exception as e:
             # Unexpected errors during pdfminer processing
             logger.exception(f"Unexpected error during pdfminer extraction for {file_path}")

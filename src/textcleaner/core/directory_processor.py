@@ -39,6 +39,8 @@ class DirectoryProcessor:
         self.security = security_utils
         self.parallel = parallel_processor
         self.single_file_processor = single_file_processor
+        # Ensure the single file processor uses the same security context
+        self.single_file_processor.security = self.security
 
     def _prepare_directory_processing(
         self,

@@ -223,20 +223,29 @@ def test_convert_text_extraction_pdfminer_error(mock_get_stats, mock_extract_tex
         "page_count": 1,
         "file_stats": {"size": 100}
     }
-    expected_text = "" # Should return empty string on pdfminer error
+    # expected_text = "" # Should return empty string on pdfminer error
 
-    # --- Act ---
-    text, metadata = pdf_converter.convert(mock_path)
+    # --- Act & Assert ---
+    # Expect a RuntimeError because extraction fails and results in no text
+    with pytest.raises(RuntimeError, match="Conversion resulted in empty content"):
+        pdf_converter.convert(mock_path)
 
-    # --- Assert ---
-    assert text == expected_text
-    assert metadata == expected_metadata
+    # --- Assert mocks ---
+    # text, metadata = pdf_converter.convert(mock_path)
+
+    # # --- Assert ---
+    # assert text == expected_text
+    # assert metadata == expected_metadata
     
     mock_pdf_reader.assert_called_once_with(mock_path)
     mock_extract_text.assert_called_once_with(mock_path)
-    mock_get_stats.assert_called_once_with(mock_path)
-    mock_logging.error.assert_called_once_with(
+    mock_get_stats.assert_called_once_with(mock_path) # Called during metadata extraction
+    mock_logging.error.assert_any_call(
         f"pdfminer extraction failed for {mock_path} (PDFSyntaxError): Invalid PDF structure"
+    )
+    # Also check for the final error log before the exception is raised
+    mock_logging.error.assert_any_call(
+        f"PDF text extraction yielded empty result for: {mock_path}"
     )
 
 @patch('textcleaner.converters.pdf_converter.PdfReader')
@@ -258,18 +267,27 @@ def test_convert_text_extraction_unexpected_error(mock_get_stats, mock_extract_t
         "page_count": 1,
         "file_stats": {"size": 100}
     }
-    expected_text = "" # Should return empty string on unexpected pdfminer error
+    # expected_text = "" # Should return empty string on unexpected pdfminer error
 
-    # --- Act ---
-    text, metadata = pdf_converter.convert(mock_path)
+    # --- Act & Assert ---
+    # Expect a RuntimeError because extraction fails and results in no text
+    with pytest.raises(RuntimeError, match="Conversion resulted in empty content"):
+        pdf_converter.convert(mock_path)
 
-    # --- Assert ---
-    assert text == expected_text
-    assert metadata == expected_metadata
+    # --- Assert mocks ---
+    # text, metadata = pdf_converter.convert(mock_path)
+
+    # # --- Assert ---
+    # assert text == expected_text
+    # assert metadata == expected_metadata
     
     mock_extract_text.assert_called_once_with(mock_path)
-    mock_logging.exception.assert_called_once_with(
+    mock_logging.exception.assert_any_call(
         f"Unexpected error during pdfminer extraction for {mock_path}"
+    )
+    # Also check for the final error log before the exception is raised
+    mock_logging.error.assert_any_call(
+        f"PDF text extraction yielded empty result for: {mock_path}"
     )
 
 @patch('textcleaner.converters.pdf_converter.PdfReader')
@@ -291,18 +309,23 @@ def test_convert_empty_text_extraction(mock_get_stats, mock_extract_text, mock_p
         "page_count": 1,
         "file_stats": {"size": 100}
     }
-    expected_text = ""
+    # expected_text = ""
 
-    # --- Act ---
-    text, metadata = pdf_converter.convert(mock_path)
+    # --- Act & Assert ---
+    # Expect a RuntimeError because extraction yields empty content
+    with pytest.raises(RuntimeError, match="Conversion resulted in empty content"):
+        pdf_converter.convert(mock_path)
 
-    # --- Assert ---
-    assert text == expected_text
-    assert metadata == expected_metadata
+    # --- Assert mocks ---
+    # text, metadata = pdf_converter.convert(mock_path)
+
+    # # --- Assert ---
+    # assert text == expected_text
+    # assert metadata == expected_metadata
     
     mock_extract_text.assert_called_once_with(mock_path)
-    # Verify warning is logged
-    mock_logging.warning.assert_called_once_with(
+    # Verify the final error log before the exception is raised
+    mock_logging.error.assert_called_once_with(
          f"PDF text extraction yielded empty result for: {mock_path}"
     )
 
@@ -344,16 +367,25 @@ def test_convert_text_extraction_pdfminer_known_errors(mock_get_stats, mock_extr
         "page_count": 1,
         "file_stats": {"size": 100}
     }
-    expected_text = ""
+    # expected_text = ""
 
-    # --- Act ---
-    text, metadata = pdf_converter.convert(mock_path)
+    # --- Act & Assert ---
+    # Expect a RuntimeError because extraction fails and results in no text
+    with pytest.raises(RuntimeError, match="Conversion resulted in empty content"):
+        pdf_converter.convert(mock_path)
 
-    # --- Assert ---
-    assert text == expected_text
-    assert metadata == expected_metadata
+    # --- Assert mocks ---
+    # text, metadata = pdf_converter.convert(mock_path)
+
+    # # --- Assert ---
+    # assert text == expected_text
+    # assert metadata == expected_metadata
     
     mock_extract_text.assert_called_once_with(mock_path)
-    mock_logging.error.assert_called_once_with(
+    mock_logging.error.assert_any_call(
         f"pdfminer extraction failed for {mock_path} ({error_type.__name__}): {error_msg}"
+    ) 
+    # Also check for the final error log before the exception is raised
+    mock_logging.error.assert_any_call(
+        f"PDF text extraction yielded empty result for: {mock_path}"
     ) 

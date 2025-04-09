@@ -23,7 +23,7 @@ from textcleaner.core.processor import TextProcessor
 from textcleaner.outputs.output_manager import OutputManager
 from textcleaner.utils.parallel import ParallelProcessor
 from textcleaner.utils.logging_config import get_logger
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.utils.security import TestingSecurityUtils
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import parallel_processor
 from ..fixtures.test_utils import (
@@ -129,17 +129,18 @@ def test_threads_vs_processes():
     assert len(process_pids) > 1, f"Process pool should use multiple processes"
     
     # Return comparison results
-    return {
-        "thread_total_time": thread_total,
-        "process_total_time": process_total,
-        "speedup": speedup,
-        "thread_avg_duration": thread_avg_duration,
-        "process_avg_duration": process_avg_duration,
-        "thread_unique_pids": len(thread_pids),
-        "thread_unique_tids": len(thread_tids),
-        "process_unique_pids": len(process_pids),
-        "process_unique_tids": len(process_tids)
-    }
+    # Return removed to avoid PytestReturnNotNoneWarning
+    # return {
+    #     "thread_total_time": thread_total,
+    #     "process_total_time": process_total,
+    #     "speedup": speedup,
+    #     "thread_avg_duration": thread_avg_duration,
+    #     "process_avg_duration": process_avg_duration,
+    #     "thread_unique_pids": len(thread_pids),
+    #     "thread_unique_tids": len(thread_tids),
+    #     "process_unique_pids": len(process_pids),
+    #     "process_unique_tids": len(process_tids)
+    # }
 
 
 def test_parallel_file_processing(thread_pool_patcher):
@@ -190,7 +191,7 @@ def test_parallel_file_processing(thread_pool_patcher):
         # Instantiate DirectoryProcessor
         dir_processor = DirectoryProcessor(
             config=single_file_processor.config,
-            security_utils=TestSecurityUtils(), # Use relaxed security for temp dirs
+            security_utils=TestingSecurityUtils(), # Use relaxed security for temp dirs
             parallel_processor=parallel_processor, # Use the singleton
             single_file_processor=single_file_processor
         )
@@ -248,12 +249,13 @@ def test_parallel_file_processing(thread_pool_patcher):
         assert worker_stats['max_concurrent'] >= max_workers - 1, \
             f"Expected close to {max_workers} concurrent workers, but got {worker_stats['max_concurrent']}"
         
-        return {
-            "success": worker_stats['max_concurrent'] > 1,
-            "max_concurrent": worker_stats['max_concurrent'],
-            "expected_max": max_workers,
-            "speedup": speedup,
-            "parallel_time": elapsed_time,
-            "sequential_time": sequential_elapsed,
-            "worker_stats": worker_stats
-        } 
+        # Return removed to avoid PytestReturnNotNoneWarning
+        # return {
+        #     "success": True,
+        #     "max_concurrent": worker_stats['max_concurrent'],
+        #     "expected_max": max_workers,
+        #     "speedup": speedup,
+        #     "parallel_time": elapsed_time,
+        #     "sequential_time": sequential_elapsed,
+        #     "worker_stats": worker_stats
+        # } 

@@ -12,7 +12,8 @@ import pytest
 from textcleaner.core.processor import TextProcessor
 from textcleaner.config.config_manager import ConfigManager
 from textcleaner.core.factories import TextProcessorFactory
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.utils.security import TestingSecurityUtils
+from textcleaner.processors.processor_pipeline import ProcessorPipeline
 
 
 @pytest.mark.integration
@@ -46,7 +47,7 @@ class TestTextProcessor(unittest.TestCase):
         # Initialize the processor using the factory and inject TestSecurityUtils
         factory = TextProcessorFactory()
         self.processor = factory.create_standard_processor()
-        self.processor.security = TestSecurityUtils() # Inject test security utils
+        self.processor.security = TestingSecurityUtils() # Inject test security utils
     
     def tearDown(self):
         """Tear down test fixtures"""
@@ -134,7 +135,7 @@ class TestTextProcessor(unittest.TestCase):
         # Create processor with custom config using factory
         factory = TextProcessorFactory()
         custom_processor = factory.create_processor(config_path=str(config_path))
-        custom_processor.security = TestSecurityUtils() # Inject test security utils
+        custom_processor.security = TestingSecurityUtils() # Inject test security utils
         
         # Process a file
         output_path = self.output_dir / "custom_processed.txt"

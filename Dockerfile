@@ -13,49 +13,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install requirements separately to leverage Docker layer caching
-# This way, dependencies are only reinstalled if requirements.txt changes
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the package files needed for installation
-COPY setup.py pyproject.toml ./
+# Copy project files first
+COPY pyproject.toml README.md MANIFEST.in ./
 COPY src/ ./src/
 
-# Build wheel package
-RUN pip wheel --no-cache-dir --wheel-dir=/app/wheels -e .
+# Install the package and its dependencies using pyproject.toml
+# Assuming standard dependencies are sufficient for the image.
+# Add optional groups if needed, e.g., .[office,pdf]
+RUN pip install --no-cache-dir .
 
 # ======== Runtime Stage ========
 FROM python:3.9-slim
 
 # Set labels for better metadata
 LABEL maintainer="TextCleaner Team"
-LABEL version="1.0.0"
+LABEL version="0.5.0"
 LABEL description="Container for preprocessing text documents for LLMs"
 
 # Set working directory
 WORKDIR /app
 
-# Install runtime system dependencies
+# Install runtime system dependencies (minimal)
 # Group related packages and clean up in the same layer to reduce image size
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # PDF processing tools
-    tesseract-ocr \
-    poppler-utils \
-    # Office document processing
-    libreoffice \
-    # Additional utilities
-    curl \
+    # Dependencies needed by some libraries (if any) - verify if needed
+    # Example: libxml2-dev libxslt1-dev if lxml needs them at runtime
+    # Example: libgl1-mesa-glx for certain graphical libs (unlikely here)
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy wheels from builder stage
-COPY --from=builder /app/wheels /app/wheels
-
-# Install the wheels
-RUN pip install --no-cache-dir /app/wheels/*
+# Copy only the installed package from the builder stage
+COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
+COPY --from=builder /usr/local/bin/textcleaner /usr/local/bin/textcleaner
 
 # Copy configuration and example files
+# Ensure config directory exists
+RUN mkdir -p /app/config
 COPY src/textcleaner/config/default_config.yaml /app/config/
 COPY examples/ /app/examples/
 
@@ -78,13 +71,10 @@ RUN chown -R textprocessor:textprocessor /app
 USER textprocessor
 
 # Add a health check to verify the container is running properly
+# Pip install should put textcleaner in the path
 HEALTHCHECK CMD textcleaner --version || exit 1
 
-# Create textcleaner symlink to the CLI module
-RUN ln -s /app/src/textcleaner/cli.py /usr/local/bin/textcleaner && \
-    chmod +x /usr/local/bin/textcleaner
-
-# Set the entrypoint to the textcleaner command
+# Set the entrypoint to the textcleaner command installed by pip
 ENTRYPOINT ["textcleaner"]
 
 # Default command shows help (can be overridden)

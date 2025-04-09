@@ -15,7 +15,10 @@ from concurrent.futures import ThreadPoolExecutor
 from textcleaner.core.processor import TextProcessor
 from textcleaner.utils.parallel import ParallelProcessor, ParallelResult
 from textcleaner.utils.logging_config import get_logger
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.config.config_manager import ConfigManager
+from textcleaner.utils.file_utils import get_supported_extensions
+from textcleaner.utils.security import TestingSecurityUtils
+from textcleaner.utils.log_utils import ProcessingLogger
 
 # Configure logging
 logger = get_logger("test_utils")
@@ -49,7 +52,7 @@ def create_test_files(directory, count=10, content_generator=None):
 def create_text_processor(max_workers=None):
     """Create a configured TextProcessor instance."""
     # Create with TestSecurityUtils for testing in temp directories
-    security = TestSecurityUtils()
+    security = TestingSecurityUtils()
     
     # Create with default configuration and test security utils
     processor = TextProcessor(

@@ -88,6 +88,12 @@ formats:
     detect_code_blocks: true
     respect_line_breaks: true
 
+  csv:  # Added CSV format section
+    delimiter: ","
+    quotechar: "\""
+    include_header: true
+    max_rows: null  # null means no limit
+
 # Output format settings
 output:
   default_format: "markdown"  # Options: markdown, plain_text, json, csv

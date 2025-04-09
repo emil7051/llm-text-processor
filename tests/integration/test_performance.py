@@ -10,11 +10,12 @@ import shutil
 
 from textcleaner.core.factories import TextProcessorFactory
 from textcleaner.utils.performance import performance_monitor
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.utils.security import TestingSecurityUtils
 from textcleaner.core.processor import TextProcessor
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import parallel_processor
 from textcleaner.utils.logging_config import get_logger
+from textcleaner.config.config_manager import ConfigManager
 
 logger = get_logger("test_performance")
 
@@ -82,7 +83,7 @@ def test_performance_monitoring_integration(sample_large_text_file, temp_directo
     # Create processor
     factory = TextProcessorFactory()
     processor = factory.create_processor(config_type="aggressive")
-    processor.security = TestSecurityUtils()
+    processor.security = TestingSecurityUtils()
     
     # Process the file
     result = processor.process_file(sample_large_text_file, output_file)
@@ -131,7 +132,7 @@ def test_parallel_vs_sequential_performance(create_test_docs, temp_directory):
     single_file_processor_seq = factory.create_standard_processor()
     processor_seq = DirectoryProcessor(
         config=single_file_processor_seq.config,
-        security_utils=TestSecurityUtils(),
+        security_utils=TestingSecurityUtils(),
         parallel_processor=parallel_processor,
         single_file_processor=single_file_processor_seq
     )
@@ -148,7 +149,7 @@ def test_parallel_vs_sequential_performance(create_test_docs, temp_directory):
     single_file_processor_par = factory.create_standard_processor()
     processor_par = DirectoryProcessor(
         config=single_file_processor_par.config,
-        security_utils=TestSecurityUtils(),
+        security_utils=TestingSecurityUtils(),
         parallel_processor=parallel_processor,
         single_file_processor=single_file_processor_par
     )

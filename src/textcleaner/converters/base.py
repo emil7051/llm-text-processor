@@ -109,6 +109,7 @@ class ConverterRegistry:
         from textcleaner.converters.html_converter import HTMLConverter
         from textcleaner.converters.text_converter import TextConverter
         from textcleaner.converters.markdown_converter import MarkdownConverter
+        from textcleaner.converters.csv_converter import CSVConverter
 
         if not self.config:
             raise RuntimeError("Registry must have a config set before populating.")
@@ -147,6 +148,9 @@ class ConverterRegistry:
 
         # Register the markdown converter
         self.register(MarkdownConverter(config=config))
+
+        # Register the CSV converter
+        self.register(CSVConverter(config=config))
 
     def register(self, converter: 'BaseConverter') -> None: # Use forward reference string
         """Register an instantiated converter.

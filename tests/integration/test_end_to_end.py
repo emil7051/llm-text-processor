@@ -8,10 +8,11 @@ from pathlib import Path
 import tempfile
 import yaml
 
+from textcleaner import TextProcessor
 from textcleaner.core.factories import TextProcessorFactory
-from textcleaner.core.processor import TextProcessor
+from textcleaner.core.processor import TextProcessor, ProcessingResult
 from textcleaner.config.config_factory import ConfigFactory
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.utils.security import TestingSecurityUtils
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import parallel_processor
 
@@ -117,7 +118,7 @@ def test_minimal_processing(sample_text_file, minimal_config, temp_directory):
     # Create processor with minimal configuration
     factory = TextProcessorFactory()
     processor = factory.create_processor(config_path=str(minimal_config))
-    processor.security = TestSecurityUtils()
+    processor.security = TestingSecurityUtils()
     
     # Process the file
     result = processor.process_file(sample_text_file, output_dir / "output.md")
@@ -152,7 +153,7 @@ def test_aggressive_processing(sample_text_file, aggressive_config, temp_directo
     # Create processor with aggressive configuration
     factory = TextProcessorFactory()
     processor = factory.create_processor(config_path=str(aggressive_config))
-    processor.security = TestSecurityUtils()
+    processor.security = TestingSecurityUtils()
     
     # Process the file
     result = processor.process_file(sample_text_file, output_dir / "output.md")
@@ -211,7 +212,7 @@ def test_parallel_directory_processing(temp_directory):
     single_file_processor = factory.create_standard_processor()
     dir_processor = DirectoryProcessor(
         config=single_file_processor.config,
-        security_utils=TestSecurityUtils(),
+        security_utils=TestingSecurityUtils(),
         parallel_processor=parallel_processor,
         single_file_processor=single_file_processor
     )
@@ -238,7 +239,7 @@ def test_different_output_formats(sample_text_file, temp_directory):
     # Create processor with standard configuration
     factory = TextProcessorFactory()
     processor = factory.create_processor()
-    processor.security = TestSecurityUtils()
+    processor.security = TestingSecurityUtils()
     
     # Process to different formats
     formats = ["markdown", "plain_text", "json"]

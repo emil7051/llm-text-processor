@@ -14,8 +14,8 @@ HEADER_FOOTER_PATTERNS = [
     # Common labels, case-insensitive, handle markdown
     r'(?i)^\s*(?:##?#? )?(Confidential|Draft|Internal Use Only|Copyright|All rights reserved)\s*$', # Added optional markdown ##
     r'^\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$', # Date stamps
-    r'^\s*(Ref|Reference|Doc|Document)\s*[#:]?\s*[\w-]+', # Document refs
-    r'^\s*(From|To|Cc|Subject|Sent|Date):' # Email headers
+    r'^\s*(Ref|Reference|Doc|Document)\s*[#:]?\s*[\w-]+\s*$', # Document refs (Added $ anchor, quote already fixed)
+    r'^\s*(From|To|Cc|Subject|Sent|Date):\s*$', # Email headers (Added $ anchor)
     # Catch simple "HEADER" or "FOOTER" lines, possibly with separators or markdown
     # Make these more specific to avoid matching code comments
     r'(?i)^##\s*FOOTER\s*$', # Specific pattern for markdown '## FOOTER'
@@ -66,7 +66,8 @@ def remove_headers_footers(content: str) -> str:
 
             # Use re.search instead of re.match to find pattern anywhere in the line
             # Although patterns use ^/$, this might handle subtle cases differently
-            if re.search(pattern, line_stripped, re.IGNORECASE):
+            # Ensure re.IGNORECASE flag is removed as patterns use inline (?i)
+            if re.search(pattern, line_stripped):
                 # print(f"DEBUG H/F: Matched pattern '{pattern}' on line: {line_stripped[:50]}...") # DEBUG
                 skip_line = True
                 break

@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from textcleaner.core.processor import TextProcessor
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.core.processor import TextProcessor, ProcessingResult
 from textcleaner.core.factories import TextProcessorFactory
+from textcleaner.utils.security import TestingSecurityUtils
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import parallel_processor
 
@@ -121,7 +121,7 @@ def directory_processor():
     # Instantiate DirectoryProcessor with necessary components
     return DirectoryProcessor(
         config=single_file_processor.config,
-        security_utils=TestSecurityUtils(), # Use relaxed security for temp dirs
+        security_utils=TestingSecurityUtils(), # Use relaxed security for temp dirs
         parallel_processor=parallel_processor, # Use the singleton
         single_file_processor=single_file_processor
     )

@@ -28,6 +28,7 @@ class ProcessorPipeline:
         Args:
             config: Configuration manager instance.
         """
+        self.logger = get_logger(__name__) # Add logger initialization
         self.config = config or ConfigManager()
         self.processors: List[BaseProcessor] = []
         self._setup_processors()
@@ -94,13 +95,17 @@ class ProcessorPipeline:
             Fully processed content.
         """
         processed_content = content
+        # Log initial content length
+        self.logger.debug(f"Initial content length: {len(processed_content)}")
         
         for processor in self.processors:
+            processor_name = processor.__class__.__name__
             start_time = time.time()
+            # Log content length before processing
+            self.logger.debug(f"Before {processor_name}: length={len(processed_content)}")
             processed_content = processor.process(processed_content, metadata)
             end_time = time.time()
-            # Log the time taken for each processor at DEBUG level
-            # Use module logger instead of config logger
-            logger.debug(f"Processor '{processor.__class__.__name__}' took {end_time - start_time:.4f}s")
+            # Log content length after processing and time taken
+            self.logger.debug(f"After {processor_name}: length={len(processed_content)}, took {end_time - start_time:.4f}s")
             
         return processed_content

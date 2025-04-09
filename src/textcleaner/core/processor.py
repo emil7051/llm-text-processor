@@ -183,6 +183,9 @@ class TextProcessor:
             self.logger.debug("Applying processing pipeline")
             try:
                 processed_text = self.processor_pipeline.process(extracted_content, metadata)
+                # Raise error if processing pipeline results in empty content
+                if not processed_text:
+                    raise RuntimeError(f"Processing pipeline resulted in empty content for {input_path}")
             except Exception as e:
                 raise RuntimeError(f"Processing pipeline failed for {input_path}: {e}") from e
             
