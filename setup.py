@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="textcleaner",
-    version="0.2.2",
+    version="0.2.4",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
@@ -32,5 +32,6 @@ setup(
         "requests>=2.28.1",
         "spacy>=3.4.0",
         "regex>=2022.3.15",
+        "six",
     ],
 ) 
