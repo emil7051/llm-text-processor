@@ -60,22 +60,32 @@ SENSITIVE_PATHS = [
 ]
 
 # Patterns for potential security issues in text content
-SUSPICIOUS_PATTERNS = [
+# Pre-compiled for efficiency
+SUSPICIOUS_PATTERNS_RAW = [
     # SQL injection patterns
-    r'(?i)(\\%27)|(\')|(\-\-)|(\%23)|(#)',
-    r'(?i)((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))',
+    (r'(?i)(\%27)|(\')|(\-\-)|(\%23)|(#)', re.IGNORECASE), # Pattern 1
+    (r'(?i)((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))', re.IGNORECASE), # Pattern 2
     # Command injection patterns
-    r'(?i)(\&\#)|(\\)|(\|)|(\;)',
+    (r'(?i)(\&#)|(\\)|(\|)|(\;)', re.IGNORECASE), # Pattern 3
     # Path traversal
-    r'\.\.[\\/]',
+    (r'\.\.[\\/]', 0), # Pattern 4 (Case sensitive)
     # Script tags
-    r'(?i)<script.*?>.*?</script>',
+    (r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL), # Pattern 5
     # Other potentially malicious HTML
-    r'(?i)<iframe.*?>.*?</iframe>',
-    r'(?i)javascript\s*:',
+    (r'<iframe.*?>.*?</iframe>', re.IGNORECASE | re.DOTALL), # Pattern 6
+    (r'javascript\s*:', re.IGNORECASE), # Pattern 7
     # Base64 executable content
-    r'(?i)base64.*(?:exe|dll|bat|sh|cmd|vbs)'
+    (r'base64.*(?:exe|dll|bat|sh|cmd|vbs)', re.IGNORECASE) # Pattern 8
 ]
+SUSPICIOUS_PATTERNS = [(re.compile(pattern, flags), pattern) for pattern, flags in SUSPICIOUS_PATTERNS_RAW]
+
+# Specific compiled pattern for path traversal (used in validate_path)
+PATH_TRAVERSAL_PATTERN = re.compile(r'\.\.[\\/]')
+
+# Specific compiled patterns for sanitize_text_content
+SCRIPT_TAG_PATTERN = re.compile(r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL)
+IFRAME_TAG_PATTERN = re.compile(r'<iframe.*?>.*?</iframe>', re.IGNORECASE | re.DOTALL)
+JAVASCRIPT_URL_PATTERN = re.compile(r'javascript\s*:', re.IGNORECASE)
 
 # Initialize MIME types globally
 mimetypes.init()
@@ -119,7 +129,8 @@ class SecurityUtils:
             error = f"Path is a symbolic link: {path}"
             self.logger.warning(error)
             return False, error
-        if re.search(r'\.\.[\\/]', original_path_str):
+        # Use pre-compiled pattern for traversal check
+        if PATH_TRAVERSAL_PATTERN.search(original_path_str):
             error = f"Path contains parent directory reference: {path}"
             self.logger.warning(error)
             return False, error
@@ -142,13 +153,15 @@ class SecurityUtils:
             return False, error
             
         # Check suspicious patterns (excluding traversal)
-        suspicious_patterns_excluding_traversal = [
-            p for p in SUSPICIOUS_PATTERNS if p != r'\.\.[\\/]'
-        ]
+        # Note: We check the string representation of the *resolved* path
         path_str = str(resolved_path)
-        for pattern in suspicious_patterns_excluding_traversal:
-            if re.search(pattern, path_str):
-                error = f"Path contains suspicious pattern: {resolved_path}"
+        for compiled_pattern, raw_pattern_str in SUSPICIOUS_PATTERNS:
+            # Skip the path traversal pattern which was checked earlier on the original path
+            if raw_pattern_str == PATH_TRAVERSAL_PATTERN.pattern:
+                continue
+            if compiled_pattern.search(path_str):
+                # Include the raw pattern string in the error for clarity
+                error = f"Resolved path contains suspicious pattern '{raw_pattern_str}': {resolved_path}"
                 self.logger.warning(error)
                 return False, error
 
@@ -183,34 +196,23 @@ class SecurityUtils:
     def _check_sensitive_location(self, resolved_path: Path) -> Tuple[bool, Optional[str]]:
         """Helper to check if a resolved path is in a sensitive location."""
         path_str = str(resolved_path)
-        for sensitive_path in SENSITIVE_PATHS:
-            if '*' in sensitive_path:
-                # Escape special regex characters except the asterisk
-                pattern = sensitive_path
-                pattern = pattern.replace('\\', '\\\\')
-                pattern = pattern.replace('.', '\\.')
-                pattern = pattern.replace('+', '\\+')
-                pattern = pattern.replace('?', '\\?')
-                pattern = pattern.replace('|', '\\|')
-                pattern = pattern.replace('{', '\\{')
-                pattern = pattern.replace('}', '\\}')
-                pattern = pattern.replace('(', '\\(')
-                pattern = pattern.replace(')', '\\\\)')
-                pattern = pattern.replace('[', '\\\\[')
-                pattern = pattern.replace(']', '\\\\]')
-                pattern = pattern.replace('$', '\\\\$')
-                pattern = pattern.replace('^', '\\\\^')
-                # Replace * with .* for regex
-                pattern = pattern.replace('*', '.*')
-                
+        for sensitive_path_pattern in SENSITIVE_PATHS:
+            if '*' in sensitive_path_pattern:
+                # Handle wildcard: escape regex characters, then replace escaped asterisk \\* with .*?
+                # This creates a non-greedy match for the wildcard section.
+                # Use re.escape for robust escaping.
+                regex_pattern_str = re.escape(sensitive_path_pattern).replace('\\*', '.*?')
                 try:
-                    if re.match(pattern, path_str):
-                        error = f"Path is in a sensitive location: {resolved_path}"
+                    # Anchor the pattern to the start of the string for safety
+                    if re.match(f"^{regex_pattern_str}", path_str):
+                        error = f"Path matches sensitive pattern '{sensitive_path_pattern}': {resolved_path}"
                         return True, error
-                except re.error:
-                    self.logger.warning(f"Invalid regex pattern for path validation: {pattern}")
-            elif path_str.startswith(sensitive_path):
-                error = f"Path is in a sensitive location: {resolved_path}"
+                except re.error as e:
+                    # Log the original pattern and the generated regex pattern
+                    self.logger.warning(f"Invalid regex pattern generated from sensitive path '{sensitive_path_pattern}' (regex: '{regex_pattern_str}'). Error: {e}")
+            elif path_str.startswith(sensitive_path_pattern):
+                # Keep the simple startswith check for non-wildcard paths
+                error = f"Path starts with sensitive prefix '{sensitive_path_pattern}': {resolved_path}"
                 return True, error
         return False, None
     
@@ -430,20 +432,28 @@ class SecurityUtils:
             Sanitized text content
         """
         sanitized = content
-        
-        # Remove or sanitize potentially malicious HTML
-        sanitized = re.sub(r'<script.*?>.*?</script>', '[SCRIPT REMOVED]', sanitized, flags=re.DOTALL | re.IGNORECASE)
-        sanitized = re.sub(r'<iframe.*?>.*?</iframe>', '[IFRAME REMOVED]', sanitized, flags=re.DOTALL | re.IGNORECASE)
-        
-        # Remove javascript: URLs
-        sanitized = re.sub(r'javascript\s*:', '[JS REMOVED]:', sanitized, flags=re.IGNORECASE)
-        
-        # Check for and log suspicious patterns
-        for pattern in SUSPICIOUS_PATTERNS:
-            if re.search(pattern, content, re.DOTALL):
-                self.logger.warning(f"Suspicious pattern detected in content: {pattern}")
+
+        # Remove or sanitize potentially malicious HTML using pre-compiled patterns
+        sanitized = SCRIPT_TAG_PATTERN.sub('[SCRIPT REMOVED]', sanitized)
+        sanitized = IFRAME_TAG_PATTERN.sub('[IFRAME REMOVED]', sanitized)
+
+        # Remove javascript: URLs using pre-compiled pattern
+        sanitized = JAVASCRIPT_URL_PATTERN.sub('[JS REMOVED]:', sanitized)
+
+        # Check for and log suspicious patterns (use compiled patterns)
+        for compiled_pattern, raw_pattern_str in SUSPICIOUS_PATTERNS:
+            # Skip patterns already handled by substitution above for efficiency
+            script_raw = SUSPICIOUS_PATTERNS_RAW[4][0]
+            iframe_raw = SUSPICIOUS_PATTERNS_RAW[5][0]
+            js_raw = SUSPICIOUS_PATTERNS_RAW[6][0]
+            if raw_pattern_str in [script_raw, iframe_raw, js_raw]:
+                 continue
+
+            if compiled_pattern.search(content):
+                # Log the raw pattern string for easier identification
+                self.logger.warning(f"Suspicious pattern detected in content: {raw_pattern_str}")
                 # We don't remove all patterns, but log them for awareness
-        
+
         return sanitized
     
     def compute_file_hash(self, file_path: Path) -> Tuple[Optional[str], Optional[str]]:
@@ -559,7 +569,7 @@ class TestSecurityUtils(SecurityUtils):
 
         # If standard validation failed, check if it was ONLY due to being
         # in a sensitive location AND if that location is the temp directory.
-        if error and "sensitive location" in error:
+        if error and ("sensitive location" in error or "sensitive pattern" in error):
             try:
                 # Check if the path is within the system's temporary directory
                 temp_dir = Path(tempfile.gettempdir()).resolve()
@@ -567,8 +577,8 @@ class TestSecurityUtils(SecurityUtils):
                 
                 # Check if the resolved path starts with the resolved temp directory path
                 if str(resolved_path).startswith(str(temp_dir)):
-                    # Allow if the only error was sensitive location in temp dir
-                    self.logger.debug(f"Allowing path in temporary directory: {path}")
+                    # Allow if the only error was sensitive location/pattern in temp dir
+                    self.logger.debug(f"Allowing path in temporary directory: {path} (Original error: {error})")
                     return True, None
             except Exception as e:
                  # Log error during temp dir check but proceed with original failure
@@ -639,8 +649,12 @@ class TestSecurityUtils(SecurityUtils):
         if path_str.startswith(temp_dir):
             return True, None
             
-        # Fall back to standard validation for non-temp paths
-        return super().validate_directory(directory_path)
+        # Check if superclass has validate_directory before calling
+        if hasattr(super(), 'validate_directory'):
+            return super().validate_directory(directory_path)
+        else:
+            # ... existing code ...
+            return True, None
         
     def validate_mime_type(self, file_path: Path) -> Tuple[bool, Optional[str]]:
         """Validate MIME type with relaxed rules for testing.
