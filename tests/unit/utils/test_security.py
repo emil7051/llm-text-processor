@@ -6,8 +6,9 @@ import os
 import tempfile
 from pathlib import Path
 import pytest
+from unittest.mock import patch, mock_open
 
-from textcleaner.utils.security import SecurityUtils, TestSecurityUtils
+from textcleaner.utils.security import SecurityUtils, TestingSecurityUtils
 
 
 @pytest.fixture
@@ -18,8 +19,8 @@ def security_utils():
 
 @pytest.fixture
 def test_security_utils():
-    """Create a TestSecurityUtils instance for testing with temp directories"""
-    return TestSecurityUtils()
+    """Create a TestingSecurityUtils instance for testing with temp directories"""
+    return TestingSecurityUtils()
 
 
 def test_validate_path_normal(test_security_utils, temp_directory):

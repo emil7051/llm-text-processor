@@ -9,7 +9,7 @@ import concurrent.futures
 # import queue # Unused
 import threading
 # from pathlib import Path # Unused
-from typing import List, Callable, TypeVar, Any, Dict, Optional, Union, Tuple, Iterator # Generic unused
+from typing import List, Callable, TypeVar, Any, Dict, Optional, Union, Tuple, Iterator, Generic # Generic unused
 from dataclasses import dataclass, field
 
 from textcleaner.utils.logging_config import get_logger

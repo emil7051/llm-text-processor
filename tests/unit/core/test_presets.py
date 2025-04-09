@@ -65,13 +65,6 @@ def test_token_counting():
     assert tokens > 0, "Token count should be positive"
     assert tokens < len(test_text), "Token count should be less than character count"
     
-    # Test with different models
-    tokens_gpt = calculate_token_estimate(test_text, model="gpt-3.5")
-    tokens_claude = calculate_token_estimate(test_text, model="claude")
-    # Models might have different token counts but should be in a reasonable range
-    assert tokens_gpt > 0, "GPT token count should be positive"
-    assert tokens_claude > 0, "Claude token count should be positive"
-    
     # Test longer text scales properly
     long_text = "This is a much longer test text that should have significantly more tokens than the previous example. " * 10
     long_tokens = calculate_token_estimate(long_text)

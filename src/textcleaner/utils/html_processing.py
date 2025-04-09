@@ -1,7 +1,8 @@
 """Utilities for processing parsed HTML/XML content using BeautifulSoup."""
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List, Tuple
 import re
+import logging
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 

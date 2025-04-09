@@ -9,6 +9,8 @@ with preservation of markdown formatting.
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+# Import yaml at the top level
+import yaml
 
 from textcleaner.converters.base import BaseConverter
 from textcleaner.utils.logging_config import get_logger
@@ -60,24 +62,49 @@ class MarkdownConverter(BaseConverter):
         try:
             self.logger.debug(f"Reading markdown file content from {file_path}")
             with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+                original_content = f.read() # Store original content
                 
-            # Extract metadata from frontmatter if present
-            metadata = self._extract_frontmatter(content)
+            lines = original_content.splitlines() # Split into lines
+            frontmatter_text = None
+            body_lines = lines
+            metadata = {}
             
-            # If frontmatter was found, remove it from the content
-            if "frontmatter" in metadata:
-                content = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL)
+            if lines and lines[0].strip() == '---':
+                try:
+                    end_marker_index = -1
+                    for i, line in enumerate(lines[1:], start=1):
+                        if line.strip() == '---':
+                            end_marker_index = i
+                            break
+                            
+                    if end_marker_index > 0:
+                        frontmatter_lines = lines[1:end_marker_index]
+                        frontmatter_text = "\n".join(frontmatter_lines)
+                        body_lines = lines[end_marker_index + 1:]
+                        
+                        # Attempt to parse the extracted frontmatter
+                        metadata = self._extract_frontmatter(frontmatter_text)
+                        
+                except Exception as e: # Catch potential errors during index/slice
+                    self.logger.warning(f"Error processing potential frontmatter: {e}")
+                    # Reset in case of error, treat as no frontmatter found
+                    frontmatter_text = None
+                    body_lines = lines 
+                    metadata = {}
+                    
+            # Reconstruct body content, preserving potential trailing newline
+            content = "\n".join(body_lines)
+            # Check original content for trailing newline
+            if original_content.endswith('\n') and not content.endswith('\n'):
+                 content += "\n" 
             
-            # Extract basic file metadata
-            file_stats = file_path.stat()
+            # Extract basic file metadata (outside the frontmatter try block)
+            file_stats = self.get_stats(file_path) # Use BaseConverter method
             metadata.update({
                 "file_name": file_path.name,
                 "file_extension": file_path.suffix.lower(),
                 "file_stats": {
-                    "size_bytes": file_stats.st_size,
-                    "created_at": file_stats.st_ctime,
-                    "modified_at": file_stats.st_mtime,
+                    "size_bytes": file_stats.get("file_size_bytes"),
                 }
             })
             
@@ -100,33 +127,32 @@ class MarkdownConverter(BaseConverter):
             self.logger.error(error_msg)
             raise
             
-    def _extract_frontmatter(self, content: str) -> Dict[str, Any]:
+    def _extract_frontmatter(self, frontmatter_text: Optional[str]) -> Dict[str, Any]:
         """Extract YAML frontmatter from markdown content if present.
         
         Args:
-            content: Markdown content to extract frontmatter from.
+            frontmatter_text: The extracted text between --- markers (or None).
             
         Returns:
             Dictionary of metadata extracted from frontmatter.
         """
         metadata = {}
-        frontmatter_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-        
-        if frontmatter_match:
-            try:
-                import yaml
-                frontmatter_text = frontmatter_match.group(1)
-                frontmatter_data = yaml.safe_load(frontmatter_text)
+        if not frontmatter_text:
+            return metadata # Return empty if no text was passed
+            
+        try:
+            # Strip just in case, though splitting/joining should handle most
+            frontmatter_data = yaml.safe_load(frontmatter_text.strip())
+            
+            if isinstance(frontmatter_data, dict):
+                metadata["frontmatter"] = frontmatter_data
                 
-                if isinstance(frontmatter_data, dict):
-                    metadata["frontmatter"] = frontmatter_data
-                    
-                    # Extract common metadata fields
-                    for key in ["title", "author", "date", "description", "tags", "categories"]:
-                        if key in frontmatter_data:
-                            metadata[key] = frontmatter_data[key]
-            except Exception as e:
-                self.logger.warning(f"Error parsing frontmatter: {str(e)}")
+                # Extract common metadata fields
+                for key in ["title", "author", "date", "description", "tags", "categories"]:
+                    if key in frontmatter_data:
+                        metadata[key] = frontmatter_data[key]
+        except Exception as e:
+            self.logger.warning(f"Error parsing frontmatter: {str(e)}")
                 
         return metadata
         

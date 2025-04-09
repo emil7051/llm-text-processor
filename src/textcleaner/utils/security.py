@@ -542,7 +542,7 @@ class SecurityUtils:
 
         # Sanitize HTML content using bleach
         # Allow empty tags list to strip all tags, attributes, and styles
-        sanitized = bleach.clean(content, tags=[], attributes={}, styles=[], strip=True)
+        sanitized = bleach.clean(content, tags=[], attributes={}, strip=True)
 
         return sanitized
     
@@ -618,7 +618,10 @@ class SecurityUtils:
         return True, None
 
 
-class TestSecurityUtils(SecurityUtils):
+# Renamed class to avoid PytestCollectionWarning
+class TestingSecurityUtils(SecurityUtils):
+    __test__ = False # Explicitly tell pytest this is not a test class
+    
     """Security utilities subclass for testing, automatically allows sensitive paths in temp dirs.
 
     Inherits from SecurityUtils but initializes it with `allow_temp_dir_sensitive=True`.

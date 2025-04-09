@@ -18,7 +18,8 @@ from textcleaner.core.factories import TextProcessorFactory
 from textcleaner.core.processor import TextProcessor
 from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.utils.parallel import parallel_processor
-from textcleaner.utils.security import TestSecurityUtils
+from textcleaner.utils.security import TestingSecurityUtils
+from textcleaner.config import ConfigManager
 
 
 # Skip all tests if hypothesis is not available
@@ -204,7 +205,7 @@ def test_parallel_processing_consistent_with_sequential(factory, temp_directory,
     # Instantiate DirectoryProcessor
     dir_processor = DirectoryProcessor(
         config=single_file_processor.config,
-        security_utils=TestSecurityUtils(),
+        security_utils=TestingSecurityUtils(),
         parallel_processor=parallel_processor,
         single_file_processor=single_file_processor
     )

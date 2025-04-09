@@ -36,12 +36,15 @@ def get_tokenizer(encoding_name: str):
     return _tokenizer_cache[encoding_name]
 
 def _estimate_token_count_fallback(text: str) -> int:
-    """Fallback token estimation if tiktoken is unavailable or fails."""
+    """Fallback token estimation if tiktoken is unavailable or fails.
+    
+    Counts word-like sequences and specific punctuation marks.
+    """
     if not text:
         return 0
-    words = text.split()
-    punct_count = len(re.findall(r'[.,!?;:]', text))
-    return len(words) + punct_count
+    # Find all sequences of word characters OR specific punctuation marks
+    tokens = re.findall(r'\w+|[.,!?;:]', text)
+    return len(tokens)
 
 def count_tokens(text: str, config: ConfigManager) -> int:
     """Count tokens using tiktoken based on configuration, with fallback."""
@@ -142,16 +145,23 @@ def generate_metrics_report(metrics: Dict[str, Any]) -> str:
     if "text_length_reduction_percent" in metrics:
         report += f"- Length reduction: {metrics['text_length_reduction_percent']:.2f}%\n"
         
-    # Token metrics
-    report += f"\n## Token Metrics\n"
-    # Dynamically adjust report labels based on whether estimation was used
-    token_label_suffix = " (est.)" if "_estimate" in next(k for k in metrics if 'original_tokens' in k) else ""
-    report += f"- Original tokens{token_label_suffix}: {metrics.get(f'original_tokens{token_key_suffix}', 0):,}\n"
-    report += f"- Processed tokens{token_label_suffix}: {metrics.get(f'processed_tokens{token_key_suffix}', 0):,}\n"
-    
-    if f"token_reduction_percent{token_key_suffix}" in metrics:
-        report += f"- Token reduction{token_label_suffix}: {metrics[f'token_reduction_percent{token_key_suffix}']:.2f}%\n"
-        
+    # Token metrics - Only include the section if token info is available
+    original_tokens_key = next((k for k in metrics if 'original_tokens' in k), None)
+    processed_tokens_key = next((k for k in metrics if 'processed_tokens' in k), None)
+    token_reduction_key = next((k for k in metrics if 'token_reduction_percent' in k), None)
+
+    if original_tokens_key or processed_tokens_key or token_reduction_key:
+        report += f"\n## Token Metrics\n"
+        is_estimate = "_estimate" in (original_tokens_key or processed_tokens_key or token_reduction_key or "")
+        token_label_suffix = " (est.)" if is_estimate else ""
+
+        if original_tokens_key:
+            report += f"- Original tokens{token_label_suffix}: {metrics.get(original_tokens_key, 0):,}\n"
+        if processed_tokens_key:
+            report += f"- Processed tokens{token_label_suffix}: {metrics.get(processed_tokens_key, 0):,}\n"
+        if token_reduction_key:
+            report += f"- Token reduction{token_label_suffix}: {metrics.get(token_reduction_key, 0):.2f}%\n"
+
     # File stats
     if "input_file_stats" in metrics:
         stats = metrics["input_file_stats"]

@@ -117,10 +117,8 @@ class PDFConverter(BaseConverter):
         except Exception as e:
             # Unexpected errors during metadata extraction
             logger.exception(f"Unexpected error extracting PDF metadata for {file_path}")
-            return {
-                "file_stats": self.get_stats(file_path),
-                "metadata_extraction_error": f"Unexpected metadata error: {str(e)}"
-            }
+            # Re-raise the exception to be caught by the main convert method's handler
+            raise e
     
     def _extract_with_pdfminer(self, file_path: Path) -> str:
         """Extract text using pdfminer.six.

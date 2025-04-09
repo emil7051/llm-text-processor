@@ -12,7 +12,7 @@ import pytest
 src_dir = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
-from textcleaner.utils.security import SecurityUtils, TestSecurityUtils
+from textcleaner.utils.security import SecurityUtils, TestingSecurityUtils
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def security_utils():
 @pytest.fixture
 def test_security_utils():
     """Create a TestSecurityUtils instance for testing with temp directories"""
-    return TestSecurityUtils()
+    return TestingSecurityUtils()
 
 
 @pytest.fixture
