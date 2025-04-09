@@ -57,7 +57,7 @@ def cli(log_level, log_file, verbose, quiet):
         effective_log_level = log_level
         
     # Configure logging
-    configure_logging(log_level=effective_log_level, log_file=log_file, quiet=quiet)
+    configure_logging(log_level=effective_log_level, log_file=log_file)
     logger = get_logger(__name__)
     logger.info(f"Starting Text Cleaner CLI v{__version__}")
     logger.debug(f"Effective log level set to: {effective_log_level}")
