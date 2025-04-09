@@ -5,9 +5,20 @@ import csv
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+# Import markdown-it-py
+try:
+    from markdown_it import MarkdownIt
+    from markdown_it.token import Token # For table parsing
+    _markdown_it_available = True
+except ImportError:
+    _markdown_it_available = False
 
 from textcleaner.config.config_manager import ConfigManager
+from textcleaner.utils.logging_config import get_logger # Import logger
 
+
+# Get logger for warnings
+logger = get_logger(__name__)
 
 class BaseOutputWriter(ABC):
     """Base class for all output format writers."""
@@ -64,52 +75,83 @@ class MarkdownWriter(BaseOutputWriter):
         # Use stored configuration values
         include_metadata = self.include_metadata
         
-        final_content = content
+        # Initialize metadata section content
+        metadata_content = ""
         
         # Add metadata section if requested and available
         if include_metadata and metadata:
-            metadata_section = "## Document Metadata\n\n"
+            metadata_items = [] # Use a list to build the section
             
             # Add basic metadata
             if "title" in metadata:
-                metadata_section += f"- Title: {metadata['title']}\n"
+                metadata_items.append(f"- Title: {metadata['title']}")
             if "author" in metadata:
-                metadata_section += f"- Author: {metadata['author']}\n"
+                metadata_items.append(f"- Author: {metadata['author']}")
             
             # Add file stats
             if "file_stats" in metadata:
                 stats = metadata["file_stats"]
                 if "file_size_kb" in stats:
-                    metadata_section += f"- File Size: {stats['file_size_kb']} KB\n"
+                    metadata_items.append(f"- File Size: {stats['file_size_kb']:.2f} KB") # Format KB
                     
             # Add document-specific metadata
             if "page_count" in metadata:
-                metadata_section += f"- Pages: {metadata['page_count']}\n"
+                metadata_items.append(f"- Pages: {metadata['page_count']}")
             elif "slide_count" in metadata:
-                metadata_section += f"- Slides: {metadata['slide_count']}\n"
+                metadata_items.append(f"- Slides: {metadata['slide_count']}")
             elif "sheet_count" in metadata:
-                metadata_section += f"- Sheets: {metadata['sheet_count']}\n"
+                metadata_items.append(f"- Sheets: {metadata['sheet_count']}")
                 
-            # Add conversion stats if available
-            if "conversion_stats" in metadata:
-                stats = metadata["conversion_stats"]
-                if "token_reduction_percent" in stats:
-                    metadata_section += f"- Token Reduction: {stats['token_reduction_percent']}%\n"
-            
-            # Append metadata to content or prepend based on config
+            # Add conversion stats if available (use metrics if nested)
+            metrics = metadata.get("metrics", {}) # Check if metrics are nested
+            if "token_reduction_percent" in metrics:
+                 metadata_items.append(f"- Token Reduction: {metrics['token_reduction_percent']:.2f}%") # Format %
+
+            # Construct the metadata section only if items were added
+            if metadata_items:
+                metadata_content = "## Document Metadata\\n\\n" + "\\n".join(metadata_items)
+
+        # Combine content and metadata based on config
+        if metadata_content:
             if self.metadata_position == "end":
-                final_content = content + "\n\n" + metadata_section
-            else:
-                final_content = metadata_section + "\n\n" + content
-        
+                final_content = content + "\\n\\n" + metadata_content
+            else: # Default to 'start' or if position is invalid
+                final_content = metadata_content + "\\n\\n" + content
+        else:
+            # If no metadata, just use the original content
+            final_content = content
+
         # Write to file
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(final_content)
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(final_content)
+        except IOError as e:
+            logger.error(f"Failed to write Markdown file {output_path}: {e}")
+            raise # Re-raise the exception
 
 
 class PlainTextWriter(BaseOutputWriter):
     """Writer for plain text output format."""
     
+    def __init__(self):
+        """Initialize the PlainTextWriter."""
+        self.parser = None
+        if _markdown_it_available:
+            # Configure markdown-it for plain text output
+            # We disable all rules that produce HTML-like tags
+            self.parser = MarkdownIt(
+                options_update={
+                    'html': False, # Disable raw HTML
+                    'linkify': False, # Disable autolinks
+                }
+            ).disable([
+                'image', 'table', 'heading', 'hr', 'list', 
+                'blockquote', 'code', 'fence', 'html_block', 
+                'html_inline', 'lheading', 'reference', 'link'
+            ])
+        else:
+            logger.warning("markdown-it-py not found. Plain text output might be suboptimal using regex.")
+
     def write(
         self, 
         content: str, 
@@ -119,64 +161,51 @@ class PlainTextWriter(BaseOutputWriter):
         """Write content as plain text.
         
         Args:
-            content: The content to write.
+            content: The content to write (assumed to be Markdown).
             output_path: Path to the output file.
-            metadata: Optional metadata to include.
+            metadata: Optional metadata (currently ignored by this writer).
             
         Raises:
             IOError: If the file cannot be written.
         """
-        # For plain text, we need to convert markdown to plain text
-        plain_content = self._markdown_to_plain(content)
+        # For plain text, convert markdown to plain text
+        if self.parser:
+            plain_content = self.parser.render(content).strip()
+        else:
+            # Fallback to basic regex if library not available
+            plain_content = self._markdown_to_plain_fallback(content)
         
         # Write to file
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(plain_content)
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(plain_content)
+        except IOError as e:
+            logger.error(f"Failed to write plain text file {output_path}: {e}")
+            raise # Re-raise the exception
     
-    def _markdown_to_plain(self, markdown: str) -> str:
-        """Convert markdown to plain text.
-        
-        Args:
-            markdown: Markdown content.
-            
-        Returns:
-            Plain text version.
-        """
+    def _markdown_to_plain_fallback(self, markdown: str) -> str:
+        """Basic regex-based fallback to convert markdown to plain text."""
         import re
         
+        logger.debug("Using regex fallback for plain text conversion.")
         # Replace headings
-        plain = re.sub(r'^#{1,6}\s+(.+)$', r'\1\n', markdown, flags=re.MULTILINE)
+        plain = re.sub(r'^#{1,6}\\s+(.+)$\\n?', r'\\1\\n', markdown, flags=re.MULTILINE)
+        # Replace lists (simple approach)
+        plain = re.sub(r'^\\s*[*-+]\\s+', '', plain, flags=re.MULTILINE)
+        # Remove bold/italic markers
+        plain = re.sub(r'(\\*\\*|\\*|_)', '', plain)
+        # Remove links but keep text
+        plain = re.sub(r'\\[(.+?)\\]\\(.+?\\)', r'\\1', plain)
+        # Remove code backticks
+        plain = re.sub(r'`', '', plain)
+        # Remove horizontal rules
+        plain = re.sub(r'^[-*_]{3,}\\s*$', '', plain, flags=re.MULTILINE)
+        # Basic table removal (crude)
+        plain = re.sub(r'\\|.*\\|', '', plain) 
+        # Clean up extra newlines
+        plain = re.sub(r'\\n{3,}', '\\n\\n', plain)
         
-        # Replace bullet points
-        plain = re.sub(r'^\s*[*-]\s+(.+)$', r'  - \1', plain, flags=re.MULTILINE)
-        
-        # Replace tables with a simpler representation
-        table_pattern = r'\|(.+)\|\n\|[-|]+\|\n((?:\|.+\|\n)+)'
-        
-        def table_to_plain(match):
-            header = match.group(1).strip()
-            rows = match.group(2).strip()
-            
-            header_cols = [col.strip() for col in header.split('|')]
-            result = f"{' | '.join(header_cols)}\n"
-            result += "-" * len(result) + "\n"
-            
-            for row in rows.split('\n'):
-                if '|' in row:
-                    cols = [col.strip() for col in row.split('|')[1:-1]]
-                    result += f"{' | '.join(cols)}\n"
-            
-            return result
-        
-        plain = re.sub(table_pattern, table_to_plain, plain)
-        
-        # Remove other markdown syntax
-        plain = re.sub(r'\*\*(.+?)\*\*', r'\1', plain)  # Bold
-        plain = re.sub(r'\*(.+?)\*', r'\1', plain)      # Italic
-        plain = re.sub(r'`(.+?)`', r'\1', plain)        # Code
-        plain = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', plain)  # Links
-        
-        return plain
+        return plain.strip()
 
 
 class JsonWriter(BaseOutputWriter):
@@ -208,16 +237,32 @@ class JsonWriter(BaseOutputWriter):
             data["metadata"] = metadata
         
         # Write to file
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except IOError as e:
+            logger.error(f"Failed to write JSON file {output_path}: {e}")
+            raise # Re-raise the exception
+        except TypeError as e: # Catch potential JSON serialization errors
+            logger.error(f"Failed to serialize data to JSON for {output_path}: {e}")
+            raise RuntimeError(f"JSON serialization error: {e}") from e
 
 
 class CsvWriter(BaseOutputWriter):
     """Writer for CSV output format.
     
-    This is primarily useful for tabular data.
+    Extracts the first table found in the Markdown content and writes it as CSV.
+    If no table is found, writes the content line-by-line into a single column.
     """
-    
+    def __init__(self):
+        """Initialize the CsvWriter."""
+        self.parser = None
+        if _markdown_it_available:
+            # Basic parser is enough, we will traverse tokens
+            self.parser = MarkdownIt() 
+        else:
+            logger.warning("markdown-it-py not found. CSV output from tables might be suboptimal using regex.")
+
     def write(
         self, 
         content: str, 
@@ -227,75 +272,138 @@ class CsvWriter(BaseOutputWriter):
         """Write content as CSV.
         
         Args:
-            content: The content to write, should be tabular data.
+            content: The content to write, assumed to be Markdown.
             output_path: Path to the output file.
-            metadata: Optional metadata to include.
+            metadata: Optional metadata (currently ignored by this writer).
             
         Raises:
             IOError: If the file cannot be written.
-            ValueError: If the content is not in a supported format.
+            ValueError: If the content is not in a supported format (currently unused).
         """
-        # Extract tables from markdown
-        tables = self._extract_tables(content)
-        
-        if not tables:
-            # No tables found, write content as a single column
-            with open(output_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(["Content"])
-                
-                # Split by lines and write each non-empty line
-                for line in content.split('\n'):
-                    if line.strip():
-                        writer.writerow([line])
-        else:
-            # Write the first table found
-            table = tables[0]
-            
-            with open(output_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                
-                # Write rows
-                for row in table:
-                    writer.writerow(row)
-    
-    def _extract_tables(self, markdown: str) -> List[List[List[str]]]:
-        """Extract tables from markdown content.
-        
-        Args:
-            markdown: Markdown content.
-            
-        Returns:
-            List of tables, where each table is a list of rows,
-            and each row is a list of cell values.
-        """
-        import re
-        
         tables = []
+        if self.parser:
+            try:
+                tables = self._extract_tables_mdit(content)
+            except Exception as e:
+                 logger.error(f"Error parsing tables with markdown-it for CSV output: {e}")
+                 # Fallback or continue without tables
+                 tables = [] # Ensure tables is empty on error
+        else:
+             # Fallback to regex if library not available
+             tables = self._extract_tables_fallback(content)
         
-        # Find tables in markdown
-        table_pattern = r'\|(.+)\|\n\|[-|]+\|\n((?:\|.+\|\n)+)'
-        matches = re.finditer(table_pattern, markdown)
+        try:
+            with open(output_path, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                
+                if not tables:
+                    # No tables found, write content as a single column
+                    logger.debug(f"No tables found in content for {output_path}. Writing as single column CSV.")
+                    writer.writerow(["Content"]) # Header for the single column
+                    # Split by lines and write each non-empty line
+                    for line in content.split('\\n'):
+                        stripped_line = line.strip()
+                        if stripped_line: # Write only non-empty lines
+                            writer.writerow([stripped_line])
+                else:
+                    # Write the first table found
+                    table = tables[0]
+                    logger.debug(f"Writing first extracted table ({len(table)} rows) to {output_path}.")
+                    # Write all rows from the first table
+                    writer.writerows(table)
+        except IOError as e:
+             logger.error(f"Failed to write CSV file {output_path}: {e}")
+             raise # Re-raise the exception
+        except csv.Error as e:
+             logger.error(f"CSV writing error for {output_path}: {e}")
+             raise RuntimeError(f"CSV writing error: {e}") from e
+
+    def _extract_tables_mdit(self, markdown: str) -> List[List[List[str]]]:
+        """Extract tables using markdown-it-py token traversal."""
+        if not self.parser:
+            return []
+
+        tokens = self.parser.parse(markdown)
+        tables = []
+        current_table: Optional[List[List[str]]] = None
+        current_row: Optional[List[str]] = None
+        in_header = False
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            # logger.debug(f"Token: {token.type} | Level: {token.level} | Tag: {token.tag} | Content: '{token.content}'")
+
+            if token.type == 'table_open':
+                current_table = []
+            elif token.type == 'thead_open':
+                in_header = True
+            elif token.type == 'tbody_open':
+                 in_header = False # Ensure we know we are out of header
+            elif token.type == 'tr_open':
+                 if current_table is not None:
+                     current_row = []
+            elif token.type in ['th_open', 'td_open']:
+                # Cell content is in the next 'inline' token
+                i += 1
+                if i < len(tokens) and tokens[i].type == 'inline':
+                    cell_content = tokens[i].content.strip()
+                    if current_row is not None:
+                         current_row.append(cell_content)
+                # Skip the closing th/td token
+                i += 1 
+                continue # Continue loop after processing cell content + closing tag
+            elif token.type == 'tr_close':
+                 if current_table is not None and current_row is not None:
+                     current_table.append(current_row)
+                 current_row = None
+            elif token.type == 'thead_close':
+                 in_header = False
+            elif token.type == 'table_close':
+                 if current_table is not None:
+                     tables.append(current_table)
+                 current_table = None
+
+            i += 1 # Move to the next token
+
+        return tables
+
+    def _extract_tables_fallback(self, markdown: str) -> List[List[List[str]]]:
+        """Extract tables from markdown content using regex (Fallback)."""
+        import re
+        logger.debug("Using regex fallback for table extraction.")
+        
+        extracted_tables = []
+        # Find tables in markdown (improved regex to handle pipes in content better, but still limited)
+        # This regex assumes simple tables and might fail on complex ones
+        table_pattern = r'^\\|(.+)\\|\\n\\|[-|\\s]+?\\|\\n((?:^\\|.+\\|\\n?)+)'
+        matches = re.finditer(table_pattern, markdown, flags=re.MULTILINE)
         
         for match in matches:
-            header = match.group(1).strip()
-            rows_text = match.group(2).strip()
+            header_line = match.group(1).strip()
+            rows_block = match.group(2).strip()
             
-            # Parse header
-            header_cells = [cell.strip() for cell in header.split('|')]
+            # Parse header cells (split by '|', strip whitespace)
+            header_cells = [cell.strip() for cell in header_line.split('|')]
             
             # Parse rows
-            rows = []
-            for row_text in rows_text.split('\n'):
-                if '|' in row_text:
-                    cells = [cell.strip() for cell in row_text.split('|')[1:-1]]
-                    rows.append(cells)
+            current_table_rows = []
+            for row_line in rows_block.split('\\n'):
+                if row_line.strip():
+                    # Split by '|', strip whitespace, ignore first/last empty strings if they exist
+                    row_cells = [cell.strip() for cell in row_line.split('|')[1:-1]] 
+                    current_table_rows.append(row_cells)
             
-            # Combine header and rows
-            table = [header_cells] + rows
-            tables.append(table)
+            # Combine header and rows if rows were found
+            if current_table_rows:
+                 # Ensure header and row cell counts match roughly (simple check)
+                 if len(header_cells) == len(current_table_rows[0]):
+                     table_data = [header_cells] + current_table_rows
+                     extracted_tables.append(table_data)
+                 else:
+                     logger.warning("Skipping table due to mismatched header/row columns (regex fallback).")
         
-        return tables
+        return extracted_tables
 
 
 class OutputManager:
@@ -312,13 +420,14 @@ class OutputManager:
         """
         self.config = config or ConfigManager() # Keep config for default format lookup
         self.writers: Dict[str, BaseOutputWriter] = {
+            # Pass config values correctly during instantiation
             "markdown": MarkdownWriter(
-                include_metadata=self.config.get("output.include_metadata", True),
-                metadata_position=self.config.get("output.metadata_position", "end")
+                include_metadata=self.config.get("output.markdown.include_metadata", True),
+                metadata_position=self.config.get("output.markdown.metadata_position", "end")
             ),
-            "plain_text": PlainTextWriter(), # No config needed
-            "json": JsonWriter(),           # No config needed
-            "csv": CsvWriter(),             # No config needed
+            "plain_text": PlainTextWriter(), # Instantiated correctly
+            "json": JsonWriter(),           # Instantiated correctly
+            "csv": CsvWriter(),             # Instantiated correctly
         }
         
     def write(
@@ -379,4 +488,7 @@ class OutputManager:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Write content using the appropriate writer
-        self.writers[format].write(content, output_path, metadata)
+        # Pass metadata to the writer
+        writer = self.writers[format]
+        logger.debug(f"Using writer '{writer.__class__.__name__}' for format '{format}'")
+        writer.write(content, output_path, metadata) # Pass metadata here

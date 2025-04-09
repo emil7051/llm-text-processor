@@ -43,6 +43,23 @@ dependencies = [
     "psutil>=5.9.0",
     "tiktoken>=0.4.0",
 ]
+optional-dependencies = {
+    dev = [
+        "pytest",
+        "pytest-cov",
+        "mypy",
+        "ruff",
+        "pre-commit",
+    ],
+    # Add optional dependencies for specific features
+    office = ["python-docx>=1.1.0", "openpyxl>=3.1.2", "python-pptx>=0.6.23"],
+    pdf = ["pdfminer.six>=20231228"],
+    html = ["beautifulsoup4>=4.12.3", "lxml>=5.1.0"],
+    temporal = ["sutime", "nltk"], # NLTK might also be needed by other optimizers
+    vocab = ["nltk"],
+    # Add markdown-it-py for robust Markdown processing in outputs
+    markdown_output = ["markdown-it-py>=3.0.0"]
+}
 
 [project.urls]
 Homepage = "https://github.com/emil7051/textcleaner"
@@ -65,3 +82,7 @@ target-version = ["py38"]
 [tool.isort]
 profile = "black"
 line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = ["py38"]

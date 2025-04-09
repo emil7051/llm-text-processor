@@ -143,7 +143,6 @@ cython_debug/
 
 # Output files
 output/
-outputs/
 
 # Example pdf
 examples/*.pdf 
