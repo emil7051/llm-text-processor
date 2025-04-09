@@ -21,7 +21,7 @@ MB = KB * 1024
 GB = MB * 1024
 
 HASH_CHUNK_SIZE = 4096  # Size of chunks for file hashing
-SECURE_DELETE_THRESHOLD = 100 * MB  # Files smaller than this are securely overwritten
+SECURE_DELETE_THRESHOLD = 150 * MB  # Files smaller than this are securely overwritten
 
 # Potentially dangerous file extensions (lowercase)
 DANGEROUS_EXTENSIONS = {
@@ -423,10 +423,21 @@ class SecurityUtils:
     
     def secure_delete_file(self, file_path: Path) -> Tuple[bool, Optional[str]]:
         """Securely delete a file with overwrite.
-        
+
+        For files smaller than SECURE_DELETE_THRESHOLD (currently 150MB),
+        this method attempts to overwrite the file content with random data
+        before unlinking (deleting) it. This aims to make data recovery harder.
+
+        Note:
+        - This single-pass overwrite is not foolproof. Modern filesystems (e.g., journaling,
+          copy-on-write) and hardware (e.g., SSD wear leveling) can leave remnants
+          of the original data accessible to specialized recovery tools.
+        - For higher security needs, consider multi-pass overwrite tools or physical destruction.
+        - Larger files are deleted without overwrite for performance reasons.
+
         Args:
             file_path: Path to the file to delete
-            
+
         Returns:
             Tuple of (success, error_message)
         """
@@ -434,16 +445,22 @@ class SecurityUtils:
             if file_path.exists():
                 # Get file size
                 file_size = file_path.stat().st_size
-                
-                # For small-to-medium files (< SECURE_DELETE_THRESHOLD), perform secure deletion with overwrite
+
+                # For files smaller than SECURE_DELETE_THRESHOLD, perform secure deletion with overwrite
                 if file_size < SECURE_DELETE_THRESHOLD:
                     # Overwrite file with random data before deletion
-                    with open(file_path, 'wb') as f:
-                        f.write(os.urandom(file_size))
-                
+                    try:
+                        with open(file_path, 'wb') as f:
+                            # Write random bytes. Ensure we handle potential errors during write.
+                            f.write(os.urandom(file_size))
+                    except Exception as write_err:
+                        # If overwrite fails, log but proceed to delete anyway
+                        self.logger.error(f"Failed to overwrite file before deletion: {file_path}, error: {write_err}")
+                        # Fall through to unlink
+
                 # Delete the file
                 file_path.unlink()
-                self.logger.debug(f"Securely deleted file: {file_path}")
+                self.logger.debug(f"Securely deleted file (overwrite attempted if < {SECURE_DELETE_THRESHOLD / MB}MB): {file_path}")
             return True, None
         except Exception as e:
             error_msg = f"Failed to delete file: {str(e)}"
