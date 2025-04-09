@@ -114,6 +114,17 @@ class SecurityUtils:
         # Patterns for potential security issues in text content
         self.suspicious_patterns = SUSPICIOUS_PATTERNS
     
+    def _log_validation_failure(self, message: str, level: str = 'warning', path: Optional[Path] = None):
+        """Logs a validation failure message."""
+        log_message = f"{message}"
+        if path:
+            log_message += f": {path}"
+
+        if level == 'error':
+            self.logger.error(log_message)
+        else: # Default to warning
+            self.logger.warning(log_message)
+
     def validate_path(self, path: Path) -> Tuple[bool, Optional[str]]:
         """Validate that a path is safe to process.
         
@@ -126,31 +137,31 @@ class SecurityUtils:
         # Step 1: Perform initial checks (symlink, traversal) on the original path
         original_path_str = str(path)
         if path.is_symlink():
-            error = f"Path is a symbolic link: {path}"
-            self.logger.warning(error)
-            return False, error
+            error = "Path is a symbolic link"
+            self._log_validation_failure(error, path=path)
+            return False, f"{error}: {path}"
         # Use pre-compiled pattern for traversal check
         if PATH_TRAVERSAL_PATTERN.search(original_path_str):
-            error = f"Path contains parent directory reference: {path}"
-            self.logger.warning(error)
-            return False, error
+            error = "Path contains parent directory reference"
+            self._log_validation_failure(error, path=path)
+            return False, f"{error}: {path}"
 
         # Step 2: Resolve the path
         try:
             resolved_path = path.resolve()
         except Exception as e:
-            error = f"Error resolving path: {str(e)}"
-            self.logger.error(error)
-            return False, error
+            error_msg = f"Error resolving path: {str(e)}"
+            self._log_validation_failure(error_msg, level='error', path=path)
+            return False, error_msg
 
         # Step 3: Perform remaining standard checks (existence, patterns, extension)
         #          using the *resolved* path.
         
         # Check existence
         if not resolved_path.exists():
-            error = f"Path does not exist: {resolved_path}"
-            self.logger.warning(error)
-            return False, error
+            error = "Path does not exist"
+            self._log_validation_failure(error, path=resolved_path)
+            return False, f"{error}: {resolved_path}"
             
         # Check suspicious patterns (excluding traversal)
         # Note: We check the string representation of the *resolved* path
@@ -160,16 +171,15 @@ class SecurityUtils:
             if raw_pattern_str == PATH_TRAVERSAL_PATTERN.pattern:
                 continue
             if compiled_pattern.search(path_str):
-                # Include the raw pattern string in the error for clarity
-                error = f"Resolved path contains suspicious pattern '{raw_pattern_str}': {resolved_path}"
-                self.logger.warning(error)
-                return False, error
+                error_msg = f"Resolved path contains suspicious pattern '{raw_pattern_str}'"
+                self._log_validation_failure(error_msg, path=resolved_path)
+                return False, f"{error_msg}: {resolved_path}"
 
         # Check dangerous extensions
         if resolved_path.is_file() and resolved_path.suffix.lower() in DANGEROUS_EXTENSIONS:
-            error = f"File has a potentially dangerous extension: {resolved_path}"
-            self.logger.warning(error)
-            return False, error
+            error = "File has a potentially dangerous extension"
+            self._log_validation_failure(error, path=resolved_path)
+            return False, f"{error}: {resolved_path}"
 
         # Step 4: Check for sensitive location, but allow temporary directories
         is_sensitive, sensitive_error = self._check_sensitive_location(resolved_path)
@@ -179,15 +189,16 @@ class SecurityUtils:
                 temp_dir = Path(tempfile.gettempdir()).resolve()
                 if not str(resolved_path).startswith(str(temp_dir)):
                     # It IS sensitive AND it's NOT in the temp dir, so fail
-                    self.logger.warning(sensitive_error) 
+                    self._log_validation_failure(sensitive_error)
                     return False, sensitive_error
                 else:
                     # It IS sensitive, BUT it's IS in the temp dir, so allow (log debug)
                     self.logger.debug(f"Allowing sensitive path in temporary directory: {resolved_path}")
             except Exception as e:
+                 # Log exception during temp check first
                  self.logger.error(f"Error checking temporary directory for path {resolved_path}: {e}")
-                 # If temp check fails, fall back to original sensitive error
-                 self.logger.warning(sensitive_error)
+                 # Then log and return the original sensitive error
+                 self._log_validation_failure(sensitive_error)
                  return False, sensitive_error
         
         # If not sensitive, or sensitive but allowed in temp dir, validation passes
@@ -232,9 +243,9 @@ class SecurityUtils:
         try:
             file_size = file_path.stat().st_size
         except Exception as e:
-            error = f"Could not determine file size for {file_path}: {str(e)}"
-            self.logger.error(error)
-            return False, error
+            error_msg = f"Could not determine file size: {str(e)}"
+            self._log_validation_failure(error_msg, level='error', path=file_path)
+            return False, error_msg
         
         # Get the appropriate size limit based on file extension
         ext = file_path.suffix.lower().lstrip('.')
@@ -242,9 +253,9 @@ class SecurityUtils:
         
         # Check against size limit
         if file_size > size_limit:
-            error = f"File is too large to safely process: {file_path} ({file_size} bytes, limit is {size_limit} bytes)"
-            self.logger.warning(error)
-            return False, error
+            error_msg = f"File is too large to safely process ({file_size} bytes, limit is {size_limit} bytes)"
+            self._log_validation_failure(error_msg, path=file_path)
+            return False, error_msg
         
         return True, None
     
@@ -261,15 +272,15 @@ class SecurityUtils:
         """
         # Check read permission
         if not os.access(file_path, os.R_OK):
-            error = f"No read permission for file: {file_path}"
-            self.logger.warning(error)
-            return False, error
+            error = "No read permission for file"
+            self._log_validation_failure(error, path=file_path)
+            return False, f"{error}: {file_path}"
         
         # Check write permission if required
         if require_write and not os.access(file_path, os.W_OK):
-            error = f"No write permission for file: {file_path}"
-            self.logger.warning(error)
-            return False, error
+            error = "No write permission for file"
+            self._log_validation_failure(error, path=file_path)
+            return False, f"{error}: {file_path}"
         
         # On Unix-like systems, check for executable bit on non-executable files
         if platform.system() != "Windows" and file_path.is_file():
@@ -296,22 +307,22 @@ class SecurityUtils:
                 # If MIME type can't be determined, we check the extension
                 ext = file_path.suffix.lower()
                 if ext in DANGEROUS_EXTENSIONS:
-                    error = f"File has a potentially dangerous extension: {file_path}"
-                    self.logger.warning(error)
-                    return False, error
+                    error = "File has a potentially dangerous extension"
+                    self._log_validation_failure(error, path=file_path)
+                    return False, f"{error}: {file_path}"
                 # If extension is unknown but not dangerous, allow it
                 return True, None
             
             if mime_type not in ALLOWED_MIME_TYPES:
-                error = f"File has disallowed MIME type: {file_path} ({mime_type})"
-                self.logger.warning(error)
-                return False, error
+                error = f"File has disallowed MIME type ({mime_type})"
+                self._log_validation_failure(error, path=file_path)
+                return False, f"{error}: {file_path}"
             
             return True, None
         except Exception as e:
-            error = f"Error determining MIME type for {file_path}: {str(e)}"
-            self.logger.error(error)
-            return False, error
+            error_msg = f"Error determining MIME type: {str(e)}"
+            self._log_validation_failure(error_msg, level='error', path=file_path)
+            return False, error_msg
     
     def validate_output_path(self, output_path: Path) -> Tuple[bool, Optional[str]]:
         """Validate that an output path is safe to write to.
@@ -330,27 +341,28 @@ class SecurityUtils:
             try:
                 parent_dir.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                error = f"Cannot create directory for output: {parent_dir}, error: {str(e)}"
-                self.logger.error(error)
-                return False, error
+                error_msg = f"Cannot create directory for output: {str(e)}"
+                self._log_validation_failure(error_msg, level='error', path=parent_dir)
+                return False, error_msg
         
         # Check write permission on parent directory
         if not os.access(parent_dir, os.W_OK):
-            error = f"No write permission for output directory: {parent_dir}"
-            self.logger.error(error)
-            return False, error
+            error = "No write permission for output directory"
+            self._log_validation_failure(error, level='error', path=parent_dir)
+            return False, f"{error}: {parent_dir}"
         
         # Check if file exists and is writable
         if output_path.exists() and not os.access(output_path, os.W_OK):
-            error = f"Output file exists but is not writable: {output_path}"
-            self.logger.error(error)
-            return False, error
+            error = "Output file exists but is not writable"
+            self._log_validation_failure(error, level='error', path=output_path)
+            return False, f"{error}: {output_path}"
         
         # Check for suspicious characters in filename
         filename = output_path.name
         if re.search(r'[<>:"|?*\x00-\x1F]', filename):
             error = f"Output filename contains invalid characters: {filename}"
-            self.logger.error(error)
+            self._log_validation_failure(error, level='error', path=output_path)
+            # Return only the specific error message about characters
             return False, error
         
         return True, None
@@ -389,9 +401,9 @@ class SecurityUtils:
             self.logger.debug(f"Created secure temporary file: {temp_path}")
             return temp_path, None
         except Exception as e:
-            error = f"Failed to create temporary file: {str(e)}"
-            self.logger.error(error)
-            return None, error
+            error_msg = f"Failed to create temporary file: {str(e)}"
+            self._log_validation_failure(error_msg, level='error') # No path needed
+            return None, error_msg
     
     def secure_delete_file(self, file_path: Path) -> Tuple[bool, Optional[str]]:
         """Securely delete a file with overwrite.
@@ -418,9 +430,9 @@ class SecurityUtils:
                 self.logger.debug(f"Securely deleted file: {file_path}")
             return True, None
         except Exception as e:
-            error = f"Failed to delete file {file_path}: {str(e)}"
-            self.logger.error(error)
-            return False, error
+            error_msg = f"Failed to delete file: {str(e)}"
+            self._log_validation_failure(error_msg, level='error', path=file_path)
+            return False, error_msg
     
     def sanitize_text_content(self, content: str) -> str:
         """Sanitize text content to remove potentially malicious patterns.
@@ -467,7 +479,10 @@ class SecurityUtils:
         """
         try:
             if not file_path.exists():
-                return None, f"File does not exist: {file_path}"
+                error = "File does not exist"
+                # Log the failure, but return the simple message as per original logic
+                self._log_validation_failure(error, path=file_path)
+                return None, f"{error}: {file_path}"
                 
             sha256_hash = hashlib.sha256()
             
@@ -478,9 +493,9 @@ class SecurityUtils:
                     
             return sha256_hash.hexdigest(), None
         except Exception as e:
-            error = f"Failed to compute hash for {file_path}: {str(e)}"
-            self.logger.error(error)
-            return None, error
+            error_msg = f"Failed to compute hash: {str(e)}"
+            self._log_validation_failure(error_msg, level='error', path=file_path)
+            return None, error_msg
     
     def validate_file_integrity(self, file_path: Path, expected_hash: str) -> Tuple[bool, Optional[str]]:
         """Validate file integrity by comparing its hash with an expected value.
@@ -495,11 +510,12 @@ class SecurityUtils:
         actual_hash, error = self.compute_file_hash(file_path)
         
         if error:
+            # Logging is already done in compute_file_hash
             return False, error
             
         if actual_hash != expected_hash:
-            error = f"File integrity check failed for {file_path}. Hash mismatch."
-            self.logger.warning(error)
+            error = "File integrity check failed. Hash mismatch."
+            self._log_validation_failure(error, path=file_path)
             return False, error
             
         return True, None
