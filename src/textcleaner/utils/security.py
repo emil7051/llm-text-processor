@@ -20,10 +20,11 @@ KB = 1024
 MB = KB * 1024
 GB = MB * 1024
 
-HASH_CHUNK_SIZE = 4096  # Size of chunks for file hashing
-SECURE_DELETE_THRESHOLD = 150 * MB  # Files smaller than this are securely overwritten
+HASH_CHUNK_SIZE = 4096  # Size in bytes for reading file chunks during hashing.
+SECURE_DELETE_THRESHOLD = 150 * MB  # Files smaller than this are overwritten before deletion.
 
 # Potentially dangerous file extensions (lowercase)
+# Used for quick checks, especially when MIME type cannot be determined.
 DANGEROUS_EXTENSIONS = {
     '.exe', '.dll', '.so', '.sh', '.bat', '.cmd', '.app', 
     '.js', '.vbs', '.ps1', '.py', '.jar', '.com', '.msi',
@@ -31,6 +32,7 @@ DANGEROUS_EXTENSIONS = {
 }
 
 # Allowed MIME types for text processing
+# Used in validate_mime_type. Add types as needed.
 ALLOWED_MIME_TYPES = {
     'text/plain', 'text/html', 'text/markdown', 'text/csv',
     'application/pdf', 'application/msword',
@@ -42,7 +44,8 @@ ALLOWED_MIME_TYPES = {
     'application/rtf', 'application/json', 'application/xml'
 }
 
-# Default file size limits (in bytes)
+# Default file size limits (in bytes) per extension.
+# Used in validate_file_size. 'default' is used if extension not found.
 FILE_SIZE_LIMITS = {
     'default': 300 * MB,  # 300MB general limit
     'pdf': 50 * MB,       # 50MB for PDFs
@@ -51,8 +54,9 @@ FILE_SIZE_LIMITS = {
     'txt': 200 * MB       # 200MB for plain text
 }
 
-# Locations that should be treated with caution
-# Note: Wildcards (*) are handled as regex patterns
+# Locations that should generally be blocked from processing.
+# Used in _check_sensitive_location.
+# Note: Wildcards (*) are handled as non-greedy regex patterns anchored to the start.
 SENSITIVE_PATHS = [
     '/etc', '/var', '/usr/bin', '/usr/sbin', '/bin', '/sbin',
     '/System', '/Library', '/private', '/Users/*/Library',
@@ -60,49 +64,57 @@ SENSITIVE_PATHS = [
     'C:\\\\Users\\\\*\\\\AppData'
 ]
 
-# Patterns for potential security issues in text content
-# Pre-compiled for efficiency
+# Patterns for potential security issues in text content or paths.
+# Primarily used in validate_path (on resolved path string) and sanitize_text_content (on original content).
+# Pre-compiled for efficiency.
 SUSPICIOUS_PATTERNS_RAW = [
-    # SQL injection patterns
+    # SQL injection patterns (e.g., quotes, comments, common syntax)
     (r'(?i)(\%27)|(\')|(\-\-)|(\%23)|(#)', re.IGNORECASE), # Pattern 1
     (r'(?i)((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))', re.IGNORECASE), # Pattern 2
-    # Command injection patterns
+    # Command injection patterns (e.g., shell metacharacters)
     (r'(?i)(\&#)|(\\)|(\|)|(\;)', re.IGNORECASE), # Pattern 3
-    # Path traversal
+    # Path traversal (../ or ..\\)
     (r'\.\.[\\/]', 0), # Pattern 4 (Case sensitive)
-    # Script tags
+    # Script tags (HTML/XML)
     (r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL), # Pattern 5
-    # Other potentially malicious HTML
+    # Other potentially malicious HTML (iframes, javascript: protocol)
     (r'<iframe.*?>.*?</iframe>', re.IGNORECASE | re.DOTALL), # Pattern 6
     (r'javascript\s*:', re.IGNORECASE), # Pattern 7
-    # Base64 executable content
+    # Base64 content potentially hinting at embedded executables
     (r'base64.*(?:exe|dll|bat|sh|cmd|vbs)', re.IGNORECASE) # Pattern 8
 ]
 SUSPICIOUS_PATTERNS = [(re.compile(pattern, flags), pattern) for pattern, flags in SUSPICIOUS_PATTERNS_RAW]
 
-# Specific compiled pattern for path traversal (used in validate_path)
+# Specific compiled pattern for path traversal (used early in validate_path on original path)
 PATH_TRAVERSAL_PATTERN = re.compile(r'\.\.[\\/]')
 
-# Specific compiled patterns for sanitize_text_content
-SCRIPT_TAG_PATTERN = re.compile(r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL)
-IFRAME_TAG_PATTERN = re.compile(r'<iframe.*?>.*?</iframe>', re.IGNORECASE | re.DOTALL)
-JAVASCRIPT_URL_PATTERN = re.compile(r'javascript\s*:', re.IGNORECASE)
+# Specific compiled patterns used directly by sanitize_text_content (removed by bleach now)
+# SCRIPT_TAG_PATTERN = re.compile(r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL)
+# IFRAME_TAG_PATTERN = re.compile(r'<iframe.*?>.*?</iframe>', re.IGNORECASE | re.DOTALL)
+# JAVASCRIPT_URL_PATTERN = re.compile(r'javascript\s*:', re.IGNORECASE)
 
-# Initialize MIME types globally
+# Initialize MIME types globally using system defaults.
 mimetypes.init()
 
 # --- Security Utilities Class ---
 
 class SecurityUtils:
-    """Enhanced utilities for secure file handling and validation."""
+    """Provides enhanced utilities for secure file handling and input validation.
+
+    Offers methods to validate file paths, sizes, types, permissions, and content
+    against common security threats like path traversal, dangerous file types,
+    excessive size, and potentially malicious content patterns.
+    Includes functionality for secure temporary file creation and deletion.
+    """
     
     def __init__(self, allow_temp_dir_sensitive: bool = False):
         """Initialize security utilities.
 
         Args:
             allow_temp_dir_sensitive: If True, allows paths within the system
-                temporary directory even if they match sensitive path patterns.
-                Defaults to False.
+                temporary directory (`tempfile.gettempdir()`) even if they match
+                SENSITIVE_PATHS patterns. Useful for testing frameworks that
+                operate within temp directories. Defaults to False (more secure).
         """
         self.logger = get_logger(__name__)
         self.allow_temp_dir_sensitive = allow_temp_dir_sensitive
@@ -123,7 +135,7 @@ class SecurityUtils:
         self.suspicious_patterns = SUSPICIOUS_PATTERNS
     
     def _log_validation_failure(self, message: str, level: str = 'warning', path: Optional[Path] = None):
-        """Logs a validation failure message."""
+        """Logs a validation failure message, standardizing format and level."""
         log_message = f"{message}"
         if path:
             log_message += f": {path}"
@@ -134,13 +146,24 @@ class SecurityUtils:
             self.logger.warning(log_message)
 
     def validate_path(self, path: Path) -> Tuple[bool, Optional[str]]:
-        """Validate that a path is safe to process.
-        
+        """Validate that a path is safe to process, checking multiple criteria.
+
+        Checks performed:
+        1.  Symbolic link check (on original path).
+        2.  Path traversal pattern check (on original path).
+        3.  Path resolution check (attempt to get absolute path).
+        4.  Existence check (on resolved path).
+        5.  Suspicious patterns check (on resolved path string, excluding traversal).
+        6.  Dangerous extension check (on resolved path, if it's a file).
+        7.  Sensitive location check (on resolved path), potentially allowing temp dir
+            based on `allow_temp_dir_sensitive` flag.
+
         Args:
-            path: Path to validate
-            
+            path: The input Path object to validate.
+
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid: bool, error_message: Optional[str]).
+            Returns (True, None) if the path is considered safe, otherwise (False, error_message).
         """
         # Step 1: Perform initial checks (symlink, traversal) on the original path
         original_path_str = str(path)
@@ -221,7 +244,18 @@ class SecurityUtils:
         return True, None
 
     def _check_sensitive_location(self, resolved_path: Path) -> Tuple[bool, Optional[str]]:
-        """Helper to check if a resolved path is in a sensitive location."""
+        """Helper to check if a resolved path matches any pattern in SENSITIVE_PATHS.
+
+        Handles both exact prefix matches and patterns containing wildcards (*).
+        Wildcards are converted to non-greedy regex patterns anchored to the start.
+
+        Args:
+            resolved_path: The absolute, resolved Path object to check.
+
+        Returns:
+            Tuple of (is_sensitive: bool, match_description: Optional[str]).
+            Returns (True, description) if a match is found, otherwise (False, None).
+        """
         path_str = str(resolved_path)
         for sensitive_path_pattern in SENSITIVE_PATHS:
             if '*' in sensitive_path_pattern:
@@ -244,14 +278,7 @@ class SecurityUtils:
         return False, None
     
     def validate_file_size(self, file_path: Path) -> Tuple[bool, Optional[str]]:
-        """Validate that a file is not too large to safely process.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+        """Validate that a file's size is within acceptable limits defined in FILE_SIZE_LIMITS."""
         if not file_path.is_file():
             return True, None  # Not a file, so size check not applicable
         
@@ -277,14 +304,18 @@ class SecurityUtils:
     
     def check_file_permissions(self, file_path: Path, 
                               require_write: bool = False) -> Tuple[bool, Optional[str]]:
-        """Check if we have appropriate permissions to read/write the file.
-        
+        """Check if the current process has sufficient OS permissions for the file/path.
+
+        Checks for read permission by default.
+        Optionally checks for write permission if `require_write` is True.
+        On Unix-like systems, logs a warning if a file has execute permission.
+
         Args:
-            file_path: Path to the file
-            require_write: Whether write permission is required
-            
+            file_path: Path to the file or directory.
+            require_write: If True, also check for write permission.
+
         Returns:
-            Tuple of (has_permission, error_message)
+            Tuple of (has_permission: bool, error_message: Optional[str]).
         """
         # Check read permission
         if not os.access(file_path, os.R_OK):
@@ -308,13 +339,16 @@ class SecurityUtils:
         return True, None
     
     def validate_mime_type(self, file_path: Path) -> Tuple[bool, Optional[str]]:
-        """Validate that a file has an allowed MIME type.
-        
+        """Validate that a file has an allowed MIME type based on ALLOWED_MIME_TYPES.
+
+        Uses `mimetypes.guess_type` which primarily relies on file extension.
+        If MIME type cannot be guessed, falls back to checking against DANGEROUS_EXTENSIONS.
+
         Args:
-            file_path: Path to the file
-            
+            file_path: Path to the file.
+
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid: bool, error_message: Optional[str]).
         """
         try:
             mime_type, _ = mimetypes.guess_type(str(file_path))
@@ -342,12 +376,18 @@ class SecurityUtils:
     
     def validate_output_path(self, output_path: Path) -> Tuple[bool, Optional[str]]:
         """Validate that an output path is safe to write to.
-        
+
+        Checks:
+        - Parent directory exists or can be created.
+        - Write permission on parent directory.
+        - If output file exists, checks for write permission on the file.
+        - Checks for potentially problematic characters in the filename itself.
+
         Args:
-            output_path: Path to validate
-            
+            output_path: The proposed output Path object.
+
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid: bool, error_message: Optional[str]).
         """
         # Check parent directory
         parent_dir = output_path.parent
@@ -386,13 +426,16 @@ class SecurityUtils:
     def create_secure_temp_file(self, prefix: str = "llm_proc_", 
                                suffix: str = None, 
                                dir: Optional[str] = None) -> Tuple[Path, Optional[str]]:
-        """Create a secure temporary file.
-        
+        """Create a secure temporary file using `tempfile.NamedTemporaryFile`.
+
+        Adds randomness to the prefix and sets restrictive permissions (0o600 on Unix-like)
+        after creation.
+
         Args:
-            prefix: Prefix for the temp file name
-            suffix: Suffix (extension) for the temp file
-            dir: Directory to create the temp file in
-            
+            prefix: Prefix for the temp file name.
+            suffix: Suffix (extension) for the temp file.
+            dir: Directory to create the temp file in (uses system default if None).
+
         Returns:
             Tuple of (temp_file_path, error_message)
         """
@@ -422,24 +465,25 @@ class SecurityUtils:
             return None, error_msg
     
     def secure_delete_file(self, file_path: Path) -> Tuple[bool, Optional[str]]:
-        """Securely delete a file with overwrite.
+        """Securely delete a file, attempting overwrite for smaller files.
 
         For files smaller than SECURE_DELETE_THRESHOLD (currently 150MB),
         this method attempts to overwrite the file content with random data
-        before unlinking (deleting) it. This aims to make data recovery harder.
+        from `os.urandom` before unlinking (deleting) it.
+        This aims to make simple data recovery harder.
 
         Note:
         - This single-pass overwrite is not foolproof. Modern filesystems (e.g., journaling,
           copy-on-write) and hardware (e.g., SSD wear leveling) can leave remnants
           of the original data accessible to specialized recovery tools.
-        - For higher security needs, consider multi-pass overwrite tools or physical destruction.
+        - For higher security needs, consider dedicated file shredding tools or physical destruction.
         - Larger files are deleted without overwrite for performance reasons.
 
         Args:
-            file_path: Path to the file to delete
+            file_path: Path to the file to delete.
 
         Returns:
-            Tuple of (success, error_message)
+            Tuple of (success: bool, error_message: Optional[str]).
         """
         try:
             if file_path.exists():
@@ -468,17 +512,19 @@ class SecurityUtils:
             return False, error_msg
     
     def sanitize_text_content(self, content: str) -> str:
-        """Sanitize text content to remove potentially malicious patterns.
-        
-        Uses bleach to remove dangerous HTML/JS constructs.
-        Logs warnings if other suspicious patterns (e.g., SQLi, Cmd Injection)
-        are detected in the original content.
-        
+        """Sanitize text content, primarily focusing on removing HTML/JS dangers.
+
+        Uses `bleach.clean()` with restrictive settings (stripping all tags,
+        attributes, and styles) to mitigate XSS and HTML injection risks.
+        Also checks the *original* content for other suspicious patterns defined in
+        SUSPICIOUS_PATTERNS (like SQLi, command injection chars) and logs warnings
+        if found, although these patterns are not removed by this function.
+
         Args:
-            content: Text content to sanitize
-            
+            content: The input text content string.
+
         Returns:
-            Sanitized text content
+            Sanitized text content string.
         """
         # Check the *original* content for non-HTML patterns before sanitization
         for compiled_pattern, raw_pattern_str in SUSPICIOUS_PATTERNS:
@@ -501,14 +547,7 @@ class SecurityUtils:
         return sanitized
     
     def compute_file_hash(self, file_path: Path) -> Tuple[Optional[str], Optional[str]]:
-        """Compute a SHA-256 hash of a file for integrity verification.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            Tuple of (hash_value, error_message)
-        """
+        """Compute a SHA-256 hash of a file, reading in chunks for efficiency."""
         try:
             if not file_path.exists():
                 error = "File does not exist"
@@ -530,15 +569,7 @@ class SecurityUtils:
             return None, error_msg
     
     def validate_file_integrity(self, file_path: Path, expected_hash: str) -> Tuple[bool, Optional[str]]:
-        """Validate file integrity by comparing its hash with an expected value.
-        
-        Args:
-            file_path: Path to the file
-            expected_hash: Expected SHA-256 hash value
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+        """Validate file integrity by comparing its computed SHA-256 hash with an expected value."""
         actual_hash, error = self.compute_file_hash(file_path)
         
         if error:
@@ -553,15 +584,16 @@ class SecurityUtils:
         return True, None
     
     def comprehensive_file_validation(self, file_path: Path) -> Tuple[bool, Optional[str]]:
-        """Perform comprehensive validation of a file.
-        
-        This combines multiple validations to ensure a file is safe to process.
-        
+        """Perform a sequence of validations on a file path.
+
+        Combines: validate_path, validate_file_size, validate_mime_type,
+        and check_file_permissions.
+
         Args:
-            file_path: Path to the file to validate
-            
+            file_path: Path to the file to validate.
+
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid: bool, error_message: Optional[str]). Returns the first error encountered.
         """
         # Basic path validation
         is_valid, error = self.validate_path(file_path)
@@ -587,10 +619,16 @@ class SecurityUtils:
 
 
 class TestSecurityUtils(SecurityUtils):
-    """Security utilities for testing purposes that allow temporary directories."""
+    """Security utilities subclass for testing, automatically allows sensitive paths in temp dirs.
+
+    Inherits from SecurityUtils but initializes it with `allow_temp_dir_sensitive=True`.
+    This simplifies testing scenarios where validated files might reside in temporary directories
+    that could match patterns in SENSITIVE_PATHS.
+    Also includes specific overrides needed for certain test cases (e.g., MIME type validation).
+    """
     
     def __init__(self):
-        """Initialize test security utilities with relaxed path validation."""
+        """Initialize test security utilities with `allow_temp_dir_sensitive` set to True."""
         # Enable the flag to allow sensitive paths within the temp directory
         super().__init__(allow_temp_dir_sensitive=True)
         self.logger = get_logger(__name__)
@@ -706,15 +744,10 @@ class TestSecurityUtils(SecurityUtils):
             return True, None
         
     def validate_mime_type(self, file_path: Path) -> Tuple[bool, Optional[str]]:
-        """Validate MIME type with relaxed rules for testing.
-        
-        Specifically handles .exe extension for testing purposes.
+        """Override validate_mime_type for specific test cases.
 
-        Args:
-            file_path: Path to the file to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        Handles `.exe` extension explicitly to test dangerous extension logic.
+        Otherwise, falls back to the base class implementation.
         """
         # Keep specific handling for .exe files for testing dangerous extensions
         if file_path.suffix.lower() == '.exe':
