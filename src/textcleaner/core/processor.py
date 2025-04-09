@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple
-import concurrent.futures
+# import concurrent.futures # Removed - Unused import
 
 from textcleaner.utils.logging_config import get_logger
 from textcleaner.config.config_manager import ConfigManager
@@ -16,7 +16,7 @@ from textcleaner.utils.metrics import calculate_metrics
 from textcleaner.core.file_registry import FileTypeRegistry
 from textcleaner.utils.security import SecurityUtils
 from textcleaner.utils.performance import performance_monitor
-from textcleaner.utils.parallel import ParallelProcessor # Keep if needed for future single-file parallelization
+# from textcleaner.utils.parallel import ParallelProcessor # Removed - Unused in this class (commented out below)
 from textcleaner.utils.file_utils import get_default_extension, get_format_from_extension
 from textcleaner.core.models import ProcessingResult # Import from models
 

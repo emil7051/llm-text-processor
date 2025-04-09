@@ -5,13 +5,11 @@ import re
 import stat
 import tempfile
 import secrets
-import shutil
 import platform
 import hashlib
 import mimetypes
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Set, Any, Union
-import io
 
 from textcleaner.utils.logging_config import get_logger
 
@@ -639,91 +637,3 @@ class TestSecurityUtils(SecurityUtils):
             
         # Fall back to standard validation for non-temp paths
         return super().validate_mime_type(file_path)
-
-
-# Export a global instance for easy import
-security_utils = SecurityUtils()
-
-
-def sanitize_path(path_str: str) -> Path:
-    """Sanitize a path string to prevent path traversal attacks.
-    
-    Args:
-        path_str: The path string to sanitize
-        
-    Returns:
-        A resolved Path object
-        
-    Raises:
-        ValueError: If the path is potentially malicious
-    """
-    # Normalize the path
-    path = Path(path_str).resolve()
-    
-    # Check for suspicious patterns
-    if '..' in str(path):
-        raise ValueError(f"Path contains suspicious '..' pattern: {path}")
-    
-    # Return the sanitized path
-    return path
-
-
-def validate_path(
-    path: Union[str, Path], 
-    base_dir: Optional[Union[str, Path]] = None,
-    must_exist: bool = False
-) -> Path:
-    """Validate a path is safe and within the specified base directory.
-    
-    Args:
-        path: The path to validate
-        base_dir: Optional base directory the path must be within
-        must_exist: Whether the path must exist on disk
-        
-    Returns:
-        A resolved Path object
-        
-    Raises:
-        ValueError: If the path is invalid, outside the base directory, or doesn't exist
-    """
-    path_obj = Path(path).resolve()
-    
-    if must_exist and not path_obj.exists():
-        raise ValueError(f"Path does not exist: {path_obj}")
-    
-    if base_dir:
-        base_path = Path(base_dir).resolve()
-        if not str(path_obj).startswith(str(base_path)):
-            raise ValueError(f"Path {path_obj} is outside the base directory {base_path}")
-    
-    return path_obj
-
-
-def sanitize_filename(filename: str) -> str:
-    """Sanitize a filename to ensure it's safe for filesystem operations.
-    
-    Args:
-        filename: The filename to sanitize
-        
-    Returns:
-        A sanitized filename string
-    """
-    # Remove potentially dangerous characters
-    safe_name = re.sub(r'[^\w\s.-]', '_', filename)
-    
-    # Ensure no leading/trailing whitespace
-    safe_name = safe_name.strip()
-    
-    # Replace spaces with underscores
-    safe_name = safe_name.replace(' ', '_')
-    
-    # Limit length
-    if len(safe_name) > 255:
-        name, ext = os.path.splitext(safe_name)
-        safe_name = name[:255-len(ext)] + ext
-        
-    # Ensure not empty
-    if not safe_name:
-        safe_name = "unnamed_file"
-        
-    return safe_name

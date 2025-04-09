@@ -1,7 +1,7 @@
 """Converter for Microsoft Office and OpenDocument files."""
 
-import os
-import re
+# import os # Removed unused import
+# import re # Removed unused import
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -98,10 +98,10 @@ class OfficeConverter(BaseConverter):
             elif file_extension in [".pptx", ".ppt", ".odp"]:
                 return self._convert_powerpoint_presentation(file_path)
             else:
+                # This should be caught by can_handle, but added for robustness
+                logger.error(f"Unsupported office document format encountered in convert: {file_extension}")
                 raise ValueError(f"Unsupported office document format: {file_extension}")
                 
-        except Exception as e:
-            raise RuntimeError(f"Error extracting text from office document: {str(e)}") from e
         except (ValueError, PackageNotFoundError, PptxPackageNotFoundError, pd.errors.ParserError, IOError) as e:
             # Catch specific known errors from libraries or file issues
             logger.error(f"Failed to process Office file {file_path} ({type(e).__name__}): {e}")

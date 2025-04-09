@@ -1,10 +1,11 @@
 """Processing pipeline for text content."""
 
-from abc import ABC, abstractmethod
+# from abc import ABC, abstractmethod # Removed unused imports
 from typing import Any, Dict, List, Optional
-import time # Add time import
+import time
 
 from textcleaner.config.config_manager import ConfigManager
+from textcleaner.utils.logging_config import get_logger # Added logger import
 
 # Import base and concrete processors
 from .base import BaseProcessor # Import from the new base.py
@@ -99,6 +100,7 @@ class ProcessorPipeline:
             processed_content = processor.process(processed_content, metadata)
             end_time = time.time()
             # Log the time taken for each processor at DEBUG level
-            self.config.logger.debug(f"Processor '{processor.__class__.__name__}' took {end_time - start_time:.4f}s")
+            # Use module logger instead of config logger
+            logger.debug(f"Processor '{processor.__class__.__name__}' took {end_time - start_time:.4f}s")
             
         return processed_content

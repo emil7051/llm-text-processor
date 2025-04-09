@@ -54,20 +54,20 @@ def remove_headers_footers(content: str) -> str:
             continue
         
         # DEBUG: Inspect the line being checked
-        if "FOOTER" in line_stripped:
-            print(f"DEBUG H/F: Checking line: {repr(line_stripped)}") # Use repr to see hidden chars
+        # if "FOOTER" in line_stripped:
+        #     print(f"DEBUG H/F: Checking line: {repr(line_stripped)}") # Use repr to see hidden chars
 
         skip_line = False
         # Check against predefined patterns
         for pattern in HEADER_FOOTER_PATTERNS:
             # DEBUG: Show pattern being checked for FOOTER line
-            if "FOOTER" in line_stripped:
-                print(f"DEBUG H/F: Checking pattern {repr(pattern)} against line {repr(line_stripped)}")
+            # if "FOOTER" in line_stripped:
+            #     print(f"DEBUG H/F: Checking pattern {repr(pattern)} against line {repr(line_stripped)}")
 
             # Use re.search instead of re.match to find pattern anywhere in the line
             # Although patterns use ^/$, this might handle subtle cases differently
             if re.search(pattern, line_stripped, re.IGNORECASE):
-                print(f"DEBUG H/F: Matched pattern '{pattern}' on line: {line_stripped[:50]}...") # DEBUG
+                # print(f"DEBUG H/F: Matched pattern '{pattern}' on line: {line_stripped[:50]}...") # DEBUG
                 skip_line = True
                 break
         if skip_line: continue
@@ -130,45 +130,46 @@ def clean_whitespace(content: str) -> str:
 
 def merge_short_paragraphs(content: str) -> str:
     """Merge short consecutive paragraphs if they don't look like lists or headings."""
-    paragraphs = re.split(r'(\n\s*\n)', content) # Keep separators
-    merged_paragraphs = []
-    i = 0
+    # Removed first implementation using re.split and while loop
+    # paragraphs = re.split(r'(\n\s*\n)', content) # Keep separators
+    # merged_paragraphs = []
+    # i = 0
     min_para_length = 80 # Paragraphs shorter than this might be merged
     sentence_ending_punctuation = ('.', '!', '?', ':', ';')
     list_or_heading_starts = ('#', '-', '*', '>', '|')
 
-    while i < len(paragraphs):
-        current_para = paragraphs[i].strip()
-        
-        if not current_para: # Skip empty parts resulting from split
-            i += 1
-            continue
-
-        # Lookahead logic needs careful index handling
-        if i + 2 < len(paragraphs): # Need current, separator, and next
-            separator = paragraphs[i+1]
-            next_para = paragraphs[i+2].strip()
-            
-            if (len(current_para) < min_para_length and 
-                not current_para.endswith(sentence_ending_punctuation) and
-                not current_para.startswith(list_or_heading_starts) and
-                next_para and # Ensure next paragraph is not empty
-                not next_para.startswith(list_or_heading_starts)):
-                
-                # Merge: current + space + next
-                merged_paragraphs.append(f"{current_para} {next_para}")
-                i += 3 # Skip current, separator, next
-                continue # Restart loop after merge
-
-        # No merge condition met or end of list, add current paragraph
-        merged_paragraphs.append(current_para)
-        i += 1 # Move to the next element (could be separator or next para)
+    # while i < len(paragraphs):
+    #     current_para = paragraphs[i].strip()
+    #     
+    #     if not current_para: # Skip empty parts resulting from split
+    #         i += 1
+    #         continue
+    #
+    #     # Lookahead logic needs careful index handling
+    #     if i + 2 < len(paragraphs): # Need current, separator, and next
+    #         separator = paragraphs[i+1]
+    #         next_para = paragraphs[i+2].strip()
+    #         
+    #         if (len(current_para) < min_para_length and 
+    #             not current_para.endswith(sentence_ending_punctuation) and
+    #             not current_para.startswith(list_or_heading_starts) and
+    #             next_para and # Ensure next paragraph is not empty
+    #             not next_para.startswith(list_or_heading_starts)):
+    #             
+    #             # Merge: current + space + next
+    #             merged_paragraphs.append(f"{current_para} {next_para}")
+    #             i += 3 # Skip current, separator, next
+    #             continue # Restart loop after merge
+    #
+    #     # No merge condition met or end of list, add current paragraph
+    #     merged_paragraphs.append(current_para)
+    #     i += 1 # Move to the next element (could be separator or next para)
 
     # Join requires paragraphs, not the mix from split
     # Need to filter out separators before joining
     # A simpler approach might be better if this logic is complex
     
-    # Simpler Re-implementation for merging:
+    # Using the simpler line-based implementation:
     lines = content.splitlines()
     merged_lines = []
     buffer = ""

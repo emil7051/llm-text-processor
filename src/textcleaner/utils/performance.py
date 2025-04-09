@@ -17,6 +17,7 @@ import json
 from textcleaner.utils.logging_config import get_logger
 
 T = TypeVar('T')
+logger = get_logger(__name__)
 
 
 def timed(func: Callable[..., T]) -> Callable[..., T]:
@@ -33,37 +34,8 @@ def timed(func: Callable[..., T]) -> Callable[..., T]:
         start_time = time.time()
         result = func(*args, **kwargs)
         end_time = time.time()
-        print(f"{func.__name__} took {end_time - start_time:.4f} seconds to run")
+        logger.debug(f"{func.__name__} took {end_time - start_time:.4f} seconds to run")
         return result
-    
-    return wrapper
-
-
-def memoize(func: Callable[..., T]) -> Callable[..., T]:
-    """Simple memoization decorator for caching function results.
-    
-    Args:
-        func: The function to memoize
-        
-    Returns:
-        A memoized version of the function
-    """
-    cache: Dict[str, Any] = {}
-    
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> T:
-        # Create a cache key from the function arguments
-        key_parts = [str(arg) for arg in args]
-        key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
-        key = hashlib.md5(str(key_parts).encode()).hexdigest()
-        
-        if key not in cache:
-            cache[key] = func(*args, **kwargs)
-        
-        return cast(T, cache[key])
-    
-    # Add a method to clear the cache
-    wrapper.clear_cache = lambda: cache.clear()  # type: ignore
     
     return wrapper
 
@@ -153,10 +125,6 @@ class TokenCounter:
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens
         }
-
-
-# Create a global token counter instance for convenience
-token_counter = TokenCounter()
 
 
 @dataclass

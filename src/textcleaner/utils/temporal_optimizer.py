@@ -2,9 +2,9 @@
 
 from typing import Dict, List, Optional, Tuple
 import re
-import os
-import json
-from pathlib import Path
+# import os # Unused
+# import json # Unused
+# from pathlib import Path # Unused
 import logging
 
 # Import Stanford NLP libraries conditionally to avoid hard dependency
@@ -170,12 +170,4 @@ class TemporalExpressionOptimizer:
             else:
                 result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
                 
-        return result
-        
-    def __del__(self):
-        """Clean up resources."""
-        if self.client is not None:
-            try:
-                self.client.stop()
-            except Exception:
-                pass 
+        return result 

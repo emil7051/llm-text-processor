@@ -2,8 +2,8 @@
 Streaming utilities for processing large files efficiently
 """
 
-import io
-import os
+# import io # Unused
+# import os # Unused
 from typing import Generator, BinaryIO, Optional, Callable, Any, Dict, Union, TextIO
 from pathlib import Path
 import tempfile
@@ -163,5 +163,5 @@ class StreamProcessor:
         return Path(temp_file.name), temp_file
 
 
-# Create singleton for common usage
-stream_processor = StreamProcessor()
+# Removed unused singleton instance
+# stream_processor = StreamProcessor()

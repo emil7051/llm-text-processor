@@ -1,6 +1,6 @@
 """Base converter classes for handling different file formats."""
 
-import os
+# import os # Removed - Unused import
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -167,22 +167,6 @@ class ConverterRegistry:
         if self.config:
             converter.config = self.config
         
-    def register_converter(self, converter_class: type) -> None:
-        """Register a converter class.
-        
-        Args:
-            converter_class: Converter class to register. Must be a subclass of BaseConverter.
-            
-        Raises:
-            TypeError: If converter_class is not a subclass of BaseConverter.
-        """
-        if not issubclass(converter_class, BaseConverter):
-            raise TypeError("Converter must be a subclass of BaseConverter")
-            
-        # Create instance and add to registry
-        converter = converter_class(self.config)
-        self.converters.append(converter)
-    
     def set_config(self, config: ConfigManager) -> None:
         """Set the configuration for all registered converters.
         
@@ -209,29 +193,3 @@ class ConverterRegistry:
                 return converter
                 
         return None
-        
-    def convert_file(self, file_path: Union[str, Path]) -> Tuple[str, Dict[str, Any]]:
-        """Convert a file using the appropriate converter.
-        
-        Args:
-            file_path: Path to the file to convert.
-            
-        Returns:
-            Tuple of (raw_content, metadata_dict).
-            
-        Raises:
-            FileNotFoundError: If the file doesn't exist.
-            ValueError: If no converter is found for the file format.
-            RuntimeError: If conversion fails.
-        """
-        if isinstance(file_path, str):
-            file_path = Path(file_path)
-            
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-            
-        converter = self.find_converter(file_path)
-        if not converter:
-            raise ValueError(f"No converter found for file: {file_path}")
-            
-        return converter.convert(file_path)

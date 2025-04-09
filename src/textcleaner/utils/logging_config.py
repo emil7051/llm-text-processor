@@ -89,11 +89,6 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
             
             # Add file handler to root logger
             root_logger.addHandler(file_handler)
-            
-            # Set specific (higher) log levels for noisy libraries
-            # logging.getLogger("pdfminer").setLevel(logging.WARNING)  # Moved outside this block
-            # Add other libraries here if needed
-            # logging.getLogger("another_library").setLevel(logging.INFO)
         except Exception as e:
             logging.error(f"Failed to create log file: {e}")
 

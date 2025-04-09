@@ -1,13 +1,10 @@
 """Converter for PDF files."""
 
-import os
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
-import pdfminer
 from pdfminer.high_level import extract_text as pdfminer_extract_text
 from pdfminer.pdfparser import PDFSyntaxError
 from pdfminer.pdfdocument import PDFEncryptionError
@@ -80,23 +77,6 @@ class PDFConverter(BaseConverter):
             # Catch any other unexpected exception during the overall conversion process
             logger.exception(f"Unexpected error during PDF conversion for {file_path}")
             raise RuntimeError(f"Unexpected error converting PDF {file_path}: {str(e)}") from e
-        finally:
-            # Close the file handle if we opened it
-            if 'file' in locals() and not file.closed:
-                file.close()
-
-        # Check if text extraction yielded any result
-        if not final_text:
-            # If known errors occurred, raise a specific error
-            if known_error_occurred:
-                 logger.error(f"PDF conversion failed for {file_path} due to previous errors (e.g., decryption, password). Returning empty content resulted in error.")
-                 raise RuntimeError(f"PDF conversion failed for {file_path}: Could not extract text due to decryption/password error.")
-            # Otherwise, log a warning (might be a genuinely empty PDF)
-            else:
-                 logger.warning(f"PDF text extraction yielded empty result for: {file_path}")
-
-        # Return extracted text and metadata
-        return final_text, metadata
     
     def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
         """Extract metadata from the PDF.

@@ -1,10 +1,13 @@
 """File utility functions for the text processor."""
 
-import os
+# import os # Removed unused import
 import re
 from pathlib import Path
-from typing import List, Set, Tuple, Union, Optional, Generator
+from typing import List, Set, Tuple, Union, Optional, Generator, TYPE_CHECKING
 
+# Use TYPE_CHECKING for imports needed only for type hints
+if TYPE_CHECKING:
+    from textcleaner.core.file_registry import FileTypeRegistry
 
 def sanitize_filename(filename: str) -> str:
     """Remove unsafe characters from a filename.
@@ -129,16 +132,37 @@ def split_path_by_extension(path: Union[str, Path]) -> Tuple[Path, str]:
 
 
 def get_default_extension(format_name: str, file_registry: 'FileTypeRegistry') -> str:
-    """Get the default file extension for a format using the file registry."""
-    # Forward type hint needed
-    from textcleaner.core.file_registry import FileTypeRegistry 
-    if not isinstance(file_registry, FileTypeRegistry):
-         # Fallback or raise error if registry not provided correctly
-         # Simple fallback for common cases:
-         mapping = {"markdown": "md", "plain_text": "txt", "json": "json", "csv": "csv"}
-         return mapping.get(format_name, format_name) # Default to format name itself
+    """Get the default file extension for a format using the file registry.
+    
+    Args:
+        format_name: The name of the output format (e.g., 'markdown', 'plain_text').
+        file_registry: The FileTypeRegistry instance to consult.
         
-    return file_registry.get_default_extension(format_name)
+    Returns:
+        The default extension for the format (e.g., 'md', 'txt').
+        
+    Raises:
+        ValueError: If the file_registry is not provided or invalid.
+        KeyError: If the format_name is not found in the registry.
+    """
+    # Import moved to top under TYPE_CHECKING
+    # from textcleaner.core.file_registry import FileTypeRegistry 
+    # Remove fallback logic - assume registry is always passed correctly
+    # if not isinstance(file_registry, FileTypeRegistry):
+    #      # Fallback or raise error if registry not provided correctly
+    #      # Simple fallback for common cases:
+    #      mapping = {"markdown": "md", "plain_text": "txt", "json": "json", "csv": "csv"}
+    #      return mapping.get(format_name, format_name) # Default to format name itself
+        
+    # Add check for valid registry instance
+    if file_registry is None or not hasattr(file_registry, 'get_default_extension'):
+        raise ValueError("Invalid or missing FileTypeRegistry instance provided.")
+        
+    try:
+        return file_registry.get_default_extension(format_name)
+    except KeyError:
+        # Re-raise KeyError if format not found, letting caller handle it
+        raise KeyError(f"Format '{format_name}' not found in the file registry.") 
         
 
 def get_format_from_extension(extension: str) -> str:

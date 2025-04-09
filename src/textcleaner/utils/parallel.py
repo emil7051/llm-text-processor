@@ -2,14 +2,14 @@
 
 import os
 import time
-import signal
-import platform
+# import signal # Unused
+# import platform # Unused
 import psutil
 import concurrent.futures
-import queue
+# import queue # Unused
 import threading
-from pathlib import Path
-from typing import List, Callable, TypeVar, Any, Dict, Optional, Union, Tuple, Iterator, Generic
+# from pathlib import Path # Unused
+from typing import List, Callable, TypeVar, Any, Dict, Optional, Union, Tuple, Iterator # Generic unused
 from dataclasses import dataclass, field
 
 from textcleaner.utils.logging_config import get_logger
@@ -560,11 +560,16 @@ class ParallelProcessor:
         
         # Try to get initial memory usage
         try:
-            import psutil
+            # psutil already imported at top level
+            # import psutil 
             process = psutil.Process(os.getpid())
             start_memory = process.memory_info().rss / (1024 * 1024)  # MB
         except ImportError:
             start_memory = 0
+        except psutil.NoSuchProcess:
+            # Process might have ended quickly, handle gracefully
+            start_memory = 0
+            worker_id += " (ended?)" # Mark worker ID if process ended early
         
         try:
             # Execute the function

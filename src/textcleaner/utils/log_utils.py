@@ -1,6 +1,5 @@
 """Logging utilities for the LLM Text Processor."""
 
-import time
 from typing import Any, Dict, Optional
 
 from textcleaner.utils.logging_config import get_logger
@@ -91,7 +90,3 @@ class ProcessingLogger:
         self.logger.info(f"Directory processing complete: {successful}/{total} files processed successfully in {time_taken:.2f}s")
         if failed > 0:
             self.logger.warning(f"{failed} files failed processing")
-
-
-# Create a singleton instance for common logging patterns
-processing_logger = ProcessingLogger(__name__)

@@ -5,7 +5,7 @@ This converter handles plain text files (.txt) and provides simple
 text extraction without special formatting or metadata handling.
 """
 
-import os
+# import os # Removed unused import
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -28,15 +28,7 @@ class TextConverter(BaseConverter):
         self.logger.debug("Initializing TextConverter")
         
         # Set the supported file extensions
-        self.supported_extensions = [".txt"]  # This is how BaseConverter.can_handle checks compatibility
-        
-    def get_supported_extensions(self) -> Set[str]:
-        """Get the set of file extensions supported by this converter.
-        
-        Returns:
-            Set of supported file extensions.
-        """
-        return {".txt"}
+        self.supported_extensions = [".txt"]
         
     def convert(self, file_path: Union[str, Path]) -> Tuple[str, Dict[str, Any]]:
         """Convert a text file to raw text.

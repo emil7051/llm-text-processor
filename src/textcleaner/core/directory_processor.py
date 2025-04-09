@@ -1,9 +1,9 @@
 """Directory processing functionality for TextCleaner."""
 
-import time
+# import time # Removed - Unused import
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
-import concurrent.futures
+# import concurrent.futures # Removed - Unused import
 
 from textcleaner.utils.logging_config import get_logger
 from textcleaner.config.config_manager import ConfigManager
@@ -13,8 +13,9 @@ from textcleaner.utils.performance import performance_monitor
 from textcleaner.utils.parallel import ParallelProcessor, ParallelResult
 from textcleaner.utils.file_utils import find_files, get_default_extension, get_format_from_extension
 
-# Forward declaration for type hinting
-if False:
+# Forward declaration using string literal is sufficient
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
     from textcleaner.core.processor import TextProcessor
 
 class DirectoryProcessor:
@@ -25,7 +26,7 @@ class DirectoryProcessor:
         config: ConfigManager,
         security_utils: SecurityUtils,
         parallel_processor: ParallelProcessor,
-        single_file_processor: 'TextProcessor' # Use forward declaration
+        single_file_processor: 'TextProcessor' # String literal hint
     ):
         self.logger = get_logger(__name__)
         self.config = config

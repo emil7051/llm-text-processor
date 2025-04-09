@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import List, Set, Optional
+from typing import List, Optional
 
 try:
     import nltk

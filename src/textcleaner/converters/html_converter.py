@@ -6,7 +6,7 @@ while preserving the semantic structure of the document.
 """
 
 import os
-import re
+# import re # Removed unused import
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse

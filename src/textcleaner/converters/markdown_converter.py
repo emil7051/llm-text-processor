@@ -5,7 +5,7 @@ This converter handles markdown files (.md) and provides extraction
 with preservation of markdown formatting.
 """
 
-import os
+# import os # Removed unused import
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -30,14 +30,6 @@ class MarkdownConverter(BaseConverter):
         
         # Set the supported file extensions
         self.supported_extensions = [".md", ".markdown"]
-        
-    def get_supported_extensions(self) -> Set[str]:
-        """Get the set of file extensions supported by this converter.
-        
-        Returns:
-            Set of supported file extensions.
-        """
-        return {".md", ".markdown"}
         
     def convert(self, file_path: Union[str, Path]) -> Tuple[str, Dict[str, Any]]:
         """Convert a markdown file to raw text.

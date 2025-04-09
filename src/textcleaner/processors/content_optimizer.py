@@ -1,7 +1,7 @@
 """Processor for optimizing content for token efficiency."""
 
-import re
-import textwrap
+# import re # Removed unused import
+# import textwrap # Removed unused import
 from typing import Any, Dict, List, Optional
 
 from .base import BaseProcessor
@@ -56,7 +56,7 @@ class ContentOptimizer(BaseProcessor):
         # Store basic config flags
         self.config = {
             "simplify_citations": simplify_citations,
-            "simplify_references": simplify_references,
+            # "simplify_references": simplify_references, # Removed unused config item
             "simplify_urls": simplify_urls,
             "max_line_length": max_line_length,
             "condense_repetitive_patterns": condense_repetitive_patterns,
