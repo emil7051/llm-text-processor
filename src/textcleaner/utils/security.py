@@ -95,9 +95,16 @@ mimetypes.init()
 class SecurityUtils:
     """Enhanced utilities for secure file handling and validation."""
     
-    def __init__(self):
-        """Initialize security utilities."""
+    def __init__(self, allow_temp_dir_sensitive: bool = False):
+        """Initialize security utilities.
+
+        Args:
+            allow_temp_dir_sensitive: If True, allows paths within the system
+                temporary directory even if they match sensitive path patterns.
+                Defaults to False.
+        """
         self.logger = get_logger(__name__)
+        self.allow_temp_dir_sensitive = allow_temp_dir_sensitive
         
         # Potentially dangerous file extensions
         self.dangerous_extensions = DANGEROUS_EXTENSIONS
@@ -185,23 +192,31 @@ class SecurityUtils:
         is_sensitive, sensitive_error = self._check_sensitive_location(resolved_path)
 
         if is_sensitive:
-            try:
-                temp_dir = Path(tempfile.gettempdir()).resolve()
-                if not str(resolved_path).startswith(str(temp_dir)):
-                    # It IS sensitive AND it's NOT in the temp dir, so fail
+            # Check if we should allow sensitive paths if they are in the temp dir
+            if self.allow_temp_dir_sensitive:
+                try:
+                    temp_dir = Path(tempfile.gettempdir()).resolve()
+                    if str(resolved_path).startswith(str(temp_dir)):
+                        # It IS sensitive, BUT it IS in the temp dir AND allowance is enabled
+                        self.logger.debug(f"Allowing sensitive path in temporary directory (allow_temp_dir_sensitive=True): {resolved_path}")
+                        # Continue validation (don't return True yet, other checks might fail)
+                        is_sensitive = False # Treat as non-sensitive for the rest of this check
+                    else:
+                        # Sensitive, not in temp dir, fail regardless of the flag
+                        self._log_validation_failure(sensitive_error)
+                        return False, sensitive_error
+                except Exception as e:
+                    # Log exception during temp check first
+                    self.logger.error(f"Error checking temporary directory for path {resolved_path}: {e}")
+                    # Then log and return the original sensitive error
                     self._log_validation_failure(sensitive_error)
                     return False, sensitive_error
-                else:
-                    # It IS sensitive, BUT it's IS in the temp dir, so allow (log debug)
-                    self.logger.debug(f"Allowing sensitive path in temporary directory: {resolved_path}")
-            except Exception as e:
-                 # Log exception during temp check first
-                 self.logger.error(f"Error checking temporary directory for path {resolved_path}: {e}")
-                 # Then log and return the original sensitive error
+            else:
+                 # Sensitive path found and allowance is NOT enabled, so fail
                  self._log_validation_failure(sensitive_error)
                  return False, sensitive_error
-        
-        # If not sensitive, or sensitive but allowed in temp dir, validation passes
+
+        # If it was not sensitive, or sensitive but allowed in temp dir, validation passes
         return True, None
 
     def _check_sensitive_location(self, resolved_path: Path) -> Tuple[bool, Optional[str]]:
@@ -559,10 +574,11 @@ class TestSecurityUtils(SecurityUtils):
     
     def __init__(self):
         """Initialize test security utilities with relaxed path validation."""
-        super().__init__()
+        # Enable the flag to allow sensitive paths within the temp directory
+        super().__init__(allow_temp_dir_sensitive=True)
         self.logger = get_logger(__name__)
-        self.logger.warning("Using TestSecurityUtils - security validations are relaxed for testing")
-    
+        self.logger.warning("Using TestSecurityUtils - security validations are relaxed for testing (allow_temp_dir_sensitive=True)")
+
     def validate_path(self, path: Path) -> Tuple[bool, Optional[str]]:
         """Validate path with relaxed rules for testing.
         
@@ -675,21 +691,26 @@ class TestSecurityUtils(SecurityUtils):
     def validate_mime_type(self, file_path: Path) -> Tuple[bool, Optional[str]]:
         """Validate MIME type with relaxed rules for testing.
         
+        Specifically handles .exe extension for testing purposes.
+
         Args:
             file_path: Path to the file to validate
-            
+
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # For test files that have dangerous extensions, return a consistent error message
-        if str(file_path).endswith('.exe'):
-            return False, f"File has dangerous extension: {file_path} (application/x-msdownload)"
-            
-        # For testing: Allow temporary directories for other files
-        path_str = str(file_path)
-        temp_dir = tempfile.gettempdir()
-        if path_str.startswith(temp_dir):
-            return True, None
-            
-        # Fall back to standard validation for non-temp paths
+        # Keep specific handling for .exe files for testing dangerous extensions
+        if file_path.suffix.lower() == '.exe':
+            # Try to guess MIME type for error message consistency
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            mime_str = f" ({mime_type})" if mime_type else ""
+            # Use the helper for logging consistency
+            error = f"File has dangerous extension{mime_str}"
+            self._log_validation_failure(error, path=file_path)
+            return False, f"{error}: {file_path}"
+
+        # Fall back to standard validation for other file types
+        # The base class validate_path (called via comprehensive_file_validation)
+        # will already allow temp dir paths due to allow_temp_dir_sensitive=True.
+        # We still want to run the actual MIME check from the base class.
         return super().validate_mime_type(file_path)
