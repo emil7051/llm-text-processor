@@ -8,6 +8,7 @@ import secrets
 import platform
 import hashlib
 import mimetypes
+import bleach
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Set, Any, Union
 
@@ -452,34 +453,33 @@ class SecurityUtils:
     def sanitize_text_content(self, content: str) -> str:
         """Sanitize text content to remove potentially malicious patterns.
         
+        Uses bleach to remove dangerous HTML/JS constructs.
+        Logs warnings if other suspicious patterns (e.g., SQLi, Cmd Injection)
+        are detected in the original content.
+        
         Args:
             content: Text content to sanitize
             
         Returns:
             Sanitized text content
         """
-        sanitized = content
-
-        # Remove or sanitize potentially malicious HTML using pre-compiled patterns
-        sanitized = SCRIPT_TAG_PATTERN.sub('[SCRIPT REMOVED]', sanitized)
-        sanitized = IFRAME_TAG_PATTERN.sub('[IFRAME REMOVED]', sanitized)
-
-        # Remove javascript: URLs using pre-compiled pattern
-        sanitized = JAVASCRIPT_URL_PATTERN.sub('[JS REMOVED]:', sanitized)
-
-        # Check for and log suspicious patterns (use compiled patterns)
+        # Check the *original* content for non-HTML patterns before sanitization
         for compiled_pattern, raw_pattern_str in SUSPICIOUS_PATTERNS:
-            # Skip patterns already handled by substitution above for efficiency
+            # Skip patterns that bleach will handle (or path traversal, which isn't relevant here)
             script_raw = SUSPICIOUS_PATTERNS_RAW[4][0]
             iframe_raw = SUSPICIOUS_PATTERNS_RAW[5][0]
             js_raw = SUSPICIOUS_PATTERNS_RAW[6][0]
-            if raw_pattern_str in [script_raw, iframe_raw, js_raw]:
+            if raw_pattern_str in [script_raw, iframe_raw, js_raw, PATH_TRAVERSAL_PATTERN.pattern]:
                  continue
 
             if compiled_pattern.search(content):
                 # Log the raw pattern string for easier identification
-                self.logger.warning(f"Suspicious pattern detected in content: {raw_pattern_str}")
+                self.logger.warning(f"Suspicious pattern detected in original content: {raw_pattern_str}")
                 # We don't remove all patterns, but log them for awareness
+
+        # Sanitize HTML content using bleach
+        # Allow empty tags list to strip all tags, attributes, and styles
+        sanitized = bleach.clean(content, tags=[], attributes={}, styles=[], strip=True)
 
         return sanitized
     
