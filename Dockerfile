@@ -27,7 +27,7 @@ FROM python:3.9-slim
 
 # Set labels for better metadata
 LABEL maintainer="TextCleaner Team"
-LABEL version="0.5.0"
+LABEL version="0.5.3"
 LABEL description="Container for preprocessing text documents for LLMs"
 
 # Set working directory
