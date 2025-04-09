@@ -13,12 +13,21 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import json
+import tiktoken
 
 from textcleaner.utils.logging_config import get_logger
 
 T = TypeVar('T')
 logger = get_logger(__name__)
 
+# Define a standard encoding (cl100k_base is common for GPT-3.5/4)
+# Cache the encoding object for efficiency
+_DEFAULT_ENCODING_NAME = "cl100k_base"
+try:
+    _encoding = tiktoken.get_encoding(_DEFAULT_ENCODING_NAME)
+except Exception as e:
+    logger.warning(f"Could not load tiktoken encoding '{_DEFAULT_ENCODING_NAME}'. Falling back to basic split(). Error: {e}")
+    _encoding = None
 
 def timed(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that times the execution of a function.
@@ -42,32 +51,32 @@ def timed(func: Callable[..., T]) -> Callable[..., T]:
 
 # Create a specialized token counter cache with limited size
 @functools.lru_cache(maxsize=128)
-def calculate_token_estimate(text: str, model: str = "default") -> int:
-    """Calculate estimated tokens with caching for repeated calls.
+def calculate_token_estimate(text: str) -> int:
+    """Calculate estimated tokens using tiktoken.
     
-    This function provides a simple approximation of token count based on
-    whitespace. For accurate counts, it should be replaced with a proper
-    tokenizer implementation.
-    
+    Uses the '{_DEFAULT_ENCODING_NAME}' encoding by default.
+    Falls back to simple whitespace splitting if tiktoken fails.
+
     Args:
         text: The text to estimate token count for
-        model: The model to use for tokenization (defaults to a simple approach)
         
     Returns:
         Estimated token count
     """
     if not text:
         return 0
-        
-    # Simple approximation - replace with proper tokenizers in practice
-    if model == "default":
-        # Rough estimate - about 4 chars per token for English text
-        return max(1, len(text) // 4)
-    elif model in ["gpt-3.5", "gpt-4"]:
-        # Slightly more precise but still an approximation
-        return len(text.split())
+
+    if _encoding:
+        try:
+            # Use tiktoken for accurate counting
+            return len(_encoding.encode(text))
+        except Exception as e:
+            # Log the error if tiktoken fails unexpectedly on specific text
+            logger.error(f"tiktoken encoding failed for a text snippet (length {len(text)}): {e}. Falling back to split().")
+            # Fallback to splitting if encoding fails for some reason
+            return len(text.split())
     else:
-        # Fallback
+        # Fallback if encoding couldn't be loaded initially
         return len(text.split())
 
 
@@ -84,32 +93,30 @@ class TokenCounter:
         self.output_tokens = 0
         self.total_tokens = 0
         
-    def add_input(self, text: str, model: str = "default") -> int:
+    def add_input(self, text: str) -> int:
         """Add input text and count its tokens.
         
         Args:
             text: The input text
-            model: The model to use for tokenization
             
         Returns:
             The token count for this text
         """
-        tokens = calculate_token_estimate(text, model)
+        tokens = calculate_token_estimate(text)
         self.input_tokens += tokens
         self.total_tokens += tokens
         return tokens
         
-    def add_output(self, text: str, model: str = "default") -> int:
+    def add_output(self, text: str) -> int:
         """Add output text and count its tokens.
         
         Args:
             text: The output text
-            model: The model to use for tokenization
             
         Returns:
             The token count for this text
         """
-        tokens = calculate_token_estimate(text, model)
+        tokens = calculate_token_estimate(text)
         self.output_tokens += tokens
         self.total_tokens += tokens
         return tokens
