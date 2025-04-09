@@ -402,12 +402,14 @@ def _process_single_file(
             
     except (IOError, OSError) as e:
         error_msg = f"File system error processing '{input_path.name}': {str(e)}"
-        logger.error(error_msg) # Log only the error message for FS errors
+        # Log with traceback for FS errors
+        logger.exception(error_msg) 
         click.echo(error_msg, err=True)
     except RuntimeError as e:
         # Catch specific runtime errors (e.g., from TextProcessor internal logic)
         error_msg = f"Processing error for '{input_path.name}': {str(e)}"
-        logger.error(error_msg) # Log only the error message
+        # Log with traceback for runtime errors
+        logger.exception(error_msg) 
         click.echo(error_msg, err=True)
     except Exception as e:
         # Catch any other unexpected error during processing
