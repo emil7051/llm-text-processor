@@ -29,9 +29,8 @@ OUTPUT_FORMATS = ['markdown', 'plain_text', 'json', 'csv']
 # Use the presets from the config module
 LLM_PRESETS = get_preset_names()
 
-# Create a global instance of SecurityUtils to be used by helpers
-# This avoids needing to pass it around constantly
-security_validator = SecurityUtils()
+# Remove global security validator - will be obtained from factory
+# security_validator = SecurityUtils()
 
 
 @click.group()
@@ -67,12 +66,16 @@ def cli(log_level, log_file, verbose, quiet):
     logger.debug(f"Quiet mode: {quiet}")
     logger.debug(f"Log file: {log_file}")
 
+# Get factory instance early for shared components
+_factory = TextProcessorFactory()
 
 def _validate_and_prepare_paths(input_path: str, output_path: Optional[str]) -> tuple[Path, Optional[Path]]:
     """Validates input path and prepares output path object."""
     logger = get_logger(__name__)
-    # Use the global validator instance
-    is_valid, error = security_validator.validate_path(Path(input_path)) 
+    # Get security utils from the factory
+    security_utils = _factory._get_security_utils() # Access private method for now
+    
+    is_valid, error = security_utils.validate_path(Path(input_path)) 
     if not is_valid:
         # Log specific error details
         error_msg = f"Invalid input path '{input_path}': {error}"
@@ -85,7 +88,7 @@ def _validate_and_prepare_paths(input_path: str, output_path: Optional[str]) -> 
     output_path_obj = None
     if output_path:
         # Validate output path using the security instance
-        is_valid, error = security_validator.validate_output_path(Path(output_path))
+        is_valid, error = security_utils.validate_output_path(Path(output_path))
         if not is_valid:
             error_msg = f"Invalid output path '{output_path}': {error}"
             logger.error(error_msg)
@@ -141,9 +144,9 @@ def _initialize_processor(
                 sys.exit(1)
     
     # Initialize processor using factory
-    factory = TextProcessorFactory()
+    # factory = TextProcessorFactory() # Use the global factory instance
     try:
-        processor = factory.create_processor(
+        processor = _factory.create_processor(
             config_path=config, 
             config_type=config_type,
             custom_overrides=custom_overrides
@@ -173,12 +176,13 @@ def _process_directory(
 
     # Instantiate components needed for directory processing
     # These might be better managed by a factory or dependency injection in a larger app
-    security_utils = SecurityUtils() # Consider if this needs specific config
-    parallel_processor = ParallelProcessor(max_workers=max_workers) 
+    # security_utils = SecurityUtils() # Get from factory
+    parallel_processor = _factory.create_parallel_processor(max_workers=max_workers) 
     
-    directory_processor = DirectoryProcessor(
-        config=processor.config, 
-        security_utils=security_utils,
+    # Use factory to create the DirectoryProcessor
+    directory_processor = _factory.create_directory_processor(
+        config_manager=processor.config, # Pass config from the file processor
+        # security_utils=security_utils, # Handled by factory
         parallel_processor=parallel_processor,
         single_file_processor=processor # Reuse the already configured processor
     )

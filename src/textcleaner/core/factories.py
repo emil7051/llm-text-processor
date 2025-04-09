@@ -10,6 +10,8 @@ from textcleaner.processors.processor_pipeline import ProcessorPipeline
 from textcleaner.outputs.output_manager import OutputManager
 from textcleaner.utils.logging_config import get_logger
 from textcleaner.utils.security import SecurityUtils
+from textcleaner.utils.parallel import ParallelProcessor
+from textcleaner.core.directory_processor import DirectoryProcessor
 from textcleaner.config.config_manager import ConfigManager
 
 
@@ -20,7 +22,14 @@ class TextProcessorFactory:
         """Initialize the factory."""
         self.logger = get_logger(__name__)
         self.config_factory = ConfigFactory()
+        self._security_utils_instance: Optional[SecurityUtils] = None
     
+    def _get_security_utils(self) -> SecurityUtils:
+        """Return a cached instance of SecurityUtils."""
+        if self._security_utils_instance is None:
+            self._security_utils_instance = SecurityUtils()
+        return self._security_utils_instance
+
     def create_processor(
         self,
         config_path: Optional[str] = None,
@@ -64,7 +73,7 @@ class TextProcessorFactory:
         output_manager = OutputManager(config_manager)
         
         # Create security and parallel processing utilities
-        security_utils = SecurityUtils()
+        security_utils = self._get_security_utils()
         
         # Create and return text processor with all components injected
         return TextProcessor(
@@ -126,3 +135,42 @@ class TextProcessorFactory:
             TextProcessor with aggressive processing configuration
         """
         return self.create_processor(config_type="aggressive")
+
+    def create_parallel_processor(
+        self,
+        max_workers: Optional[int] = None
+    ) -> ParallelProcessor:
+        """Create a ParallelProcessor instance.
+
+        Args:
+            max_workers: Maximum number of worker processes.
+
+        Returns:
+            Configured ParallelProcessor instance.
+        """
+        # Configuration for max_workers could potentially come from ConfigManager in the future
+        return ParallelProcessor(max_workers=max_workers)
+
+    def create_directory_processor(
+        self,
+        config_manager: ConfigManager,
+        single_file_processor: TextProcessor,
+        parallel_processor: ParallelProcessor
+    ) -> DirectoryProcessor:
+        """Create a DirectoryProcessor instance.
+
+        Args:
+            config_manager: The configuration manager.
+            single_file_processor: The processor for individual files.
+            parallel_processor: The parallel processor instance.
+
+        Returns:
+            Configured DirectoryProcessor instance.
+        """
+        security_utils = self._get_security_utils() # Reuse cached security instance
+        return DirectoryProcessor(
+            config=config_manager,
+            security_utils=security_utils,
+            parallel_processor=parallel_processor,
+            single_file_processor=single_file_processor
+        )
