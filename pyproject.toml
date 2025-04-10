@@ -39,6 +39,7 @@ dependencies = [
     "psutil>=5.9.0",
     "tiktoken>=0.4.0",
     "markdown-it-py>=3.0.0",
+    "bleach>=6.1.0",
 ]
 
 [project.optional-dependencies]
