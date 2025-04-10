@@ -10,8 +10,18 @@ class Textcleaner < Formula
 
   depends_on "python@3.11"
   
+  resource "pyyaml" do
+    url "https://files.pythonhosted.org/packages/cd/e5/af35f7ea75cf72f2cd079c95ee16797de7cd71f29ea7c68ae5ce7be1eda0/PyYAML-6.0.1.tar.gz"
+    sha256 "bfdf460b1736c775f2ba9f6a92bca30bc2095067b8a9d77876d1fad6cc3b4a43"
+  end
+
   def install
     venv = virtualenv_create(libexec, "/opt/homebrew/bin/python3.11")
+    resources.each do |r|
+      r.stage do
+        venv.pip_install_and_link(Pathname.pwd)
+      end
+    end
     venv.pip_install buildpath
 
     (bin/"textcleaner").write_env_script "#{libexec}/bin/textcleaner", PATH: "#{libexec}/bin:$PATH"
