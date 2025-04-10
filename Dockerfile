@@ -27,7 +27,7 @@ FROM python:3.9-slim
 
 # Set labels for better metadata
 LABEL maintainer="TextCleaner Team"
-LABEL version="0.5.3"
+LABEL version="0.5.8"
 LABEL description="Container for preprocessing text documents for LLMs"
 
 # Set working directory
@@ -35,14 +35,16 @@ WORKDIR /app
 
 # Install runtime system dependencies (minimal)
 # Group related packages and clean up in the same layer to reduce image size
+# NOTE: Verify if libraries like lxml require runtime dependencies (e.g., libxml2, libxslt1) in this slim image.
+#       Install them here if needed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Dependencies needed by some libraries (if any) - verify if needed
-    # Example: libxml2-dev libxslt1-dev if lxml needs them at runtime
-    # Example: libgl1-mesa-glx for certain graphical libs (unlikely here)
+    # Example: libxml2 libxslt1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only the installed package from the builder stage
+# NOTE: This image uses Python 3.9. Ensure compatibility if other deployment methods
+#       (like Homebrew, which uses 3.11) target different versions.
 COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
 COPY --from=builder /usr/local/bin/textcleaner /usr/local/bin/textcleaner
 
