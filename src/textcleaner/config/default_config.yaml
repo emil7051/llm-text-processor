@@ -1,6 +1,6 @@
 # Default configuration for LLM Text Processor
 
-app_version: "0.5.4"
+app_version: "0.5.5"
 
 # General settings
 general:
