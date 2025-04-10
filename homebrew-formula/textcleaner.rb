@@ -11,7 +11,7 @@ class Textcleaner < Formula
   depends_on "python@3.11"
   
   def install
-    venv = virtualenv_create(libexec, Formula["python@3.11"].opt_bin/"python3")
+    venv = virtualenv_create(libexec, "/opt/homebrew/bin/python3.11")
     venv.pip_install buildpath
 
     (bin/"textcleaner").write_env_script "#{libexec}/bin/textcleaner", PATH: "#{libexec}/bin:$PATH"
