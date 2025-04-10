@@ -73,11 +73,8 @@ class ProcessorPipeline:
                 simplify_references=self.config.get("optimization.simplify_references", True),
                 simplify_urls=self.config.get("optimization.simplify_urls", False),
                 max_line_length=self.config.get("optimization.max_line_length", 0), # Default 0 (no wrap)
-                optimize_temporal=self.config.get("optimization.optimize_temporal", False),
-                use_stanford_nlp=self.config.get("optimization.use_stanford_nlp", False),
                 simplify_vocabulary=self.config.get("optimization.simplify_vocabulary", False),
                 min_word_length=self.config.get("optimization.min_word_length", 5),
-                download_nltk_resources=self.config.get("optimization.download_nltk_resources", True),
                 condense_repetitive_patterns=self.config.get("optimization.condense_repetitive_patterns", True),
                 remove_redundant_phrases=self.config.get("optimization.remove_redundant_phrases", True),
                 remove_excessive_punctuation=self.config.get("optimization.remove_excessive_punctuation", True),

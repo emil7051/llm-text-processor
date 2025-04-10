@@ -360,27 +360,34 @@ def process(
             
             total_original_tokens = 0
             total_processed_tokens = 0
-            token_reduction_possible = False
+            token_files_count = 0
             
             for r in results:
                 if r.success:
-                    orig_tokens = r.metrics.get("original_token_estimate")
-                    proc_tokens = r.metrics.get("processed_token_estimate")
-                    if orig_tokens is not None and proc_tokens is not None:
+                    # Check for both key types (estimated and non-estimated)
+                    orig_tokens = (r.metrics.get("original_token_estimate") or 
+                                  r.metrics.get("original_tokens", 0))
+                    proc_tokens = (r.metrics.get("processed_token_estimate") or 
+                                  r.metrics.get("processed_tokens", 0))
+                    
+                    if orig_tokens > 0 and proc_tokens > 0:
                         total_original_tokens += orig_tokens
                         total_processed_tokens += proc_tokens
-                        token_reduction_possible = True
+                        token_files_count += 1
 
             click.echo(f"\nDirectory Processing Summary:")
             click.echo(f"  Total files processed: {len(results)} ({successful_count} successful, {failed_count} failed)")
-            if token_reduction_possible:
+            
+            # Always show token statistics if at least one file has them
+            if token_files_count > 0:
                 total_tokens_removed = total_original_tokens - total_processed_tokens
                 avg_reduction_percent = ((total_original_tokens - total_processed_tokens) / total_original_tokens * 100) \
                                         if total_original_tokens > 0 else 0
-                click.echo(f"  Total tokens removed: {total_tokens_removed:,}")
-                click.echo(f"  Average token reduction: {avg_reduction_percent:.1f}%")
+                click.echo(f"  Token reduction: {total_original_tokens:,} → {total_processed_tokens:,} ({avg_reduction_percent:.1f}%)")
+                if token_files_count < successful_count:
+                    click.echo(f"  Note: Token counts available for {token_files_count} of {successful_count} successful files")
             else:
-                click.echo("  Token reduction statistics not available for all files.")
+                click.echo("  No token statistics available for processed files")
             
     else:
         # This case should technically be caught by validate_path, but safety first

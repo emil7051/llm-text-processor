@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "textcleaner"
-version = "0.5.3"
+version = "0.5.4"
 description = "A tool for converting various file formats to clean, LLM-friendly text"
 readme = "README.md"
 authors = [
@@ -38,6 +38,7 @@ dependencies = [
     "regex>=2022.3.15",
     "psutil>=5.9.0",
     "tiktoken>=0.4.0",
+    "markdown-it-py>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -49,14 +50,6 @@ dev = [
     "pre-commit",
     "hypothesis",
 ]
-# Add optional dependencies for specific features
-office = ["python-docx>=1.1.0", "openpyxl>=3.1.2", "python-pptx>=0.6.23"]
-pdf = ["pdfminer.six>=20231228"]
-html = ["beautifulsoup4>=4.12.3", "lxml>=5.1.0"]
-temporal = ["sutime", "nltk"]
-vocab = ["nltk"]
-# Add markdown-it-py for robust Markdown processing in outputs
-markdown_output = ["markdown-it-py>=3.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/emil7051/textcleaner"

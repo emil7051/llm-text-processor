@@ -8,9 +8,16 @@ try:
     import nltk
     from nltk.corpus import wordnet
     from nltk.tokenize import word_tokenize
+    from nltk.stem import WordNetLemmatizer
     NLTK_AVAILABLE = True
 except ImportError:
     NLTK_AVAILABLE = False
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+# Ensure necessary NLTK resources are downloaded automatically
+# _ensure_nltk_resources()
 
 class WordNetSimplifier:
     """Simplify complex vocabulary using WordNet.
@@ -19,33 +26,40 @@ class WordNetSimplifier:
     in the text, helping to reduce token usage by using more common words.
     """
     
-    def __init__(self, min_word_length: int = 5, download_resources: bool = True):
+    def __init__(self, min_word_length: int):
         """Initialize the WordNet simplifier.
         
         Args:
             min_word_length: Minimum word length to consider for simplification
-            download_resources: Whether to download required NLTK resources
         """
-        self.logger = logging.getLogger(__name__)
         self.min_word_length = min_word_length
+        self.lemmatizer = WordNetLemmatizer()
+        self._ensure_nltk_resources() # Call resource check during init
         
         if not NLTK_AVAILABLE:
-            self.logger.warning("NLTK is not available, WordNetSimplifier will not work")
+            logger.warning("NLTK is not available, WordNetSimplifier will not work")
             return
-            
-        # Download required NLTK resources if needed
-        if download_resources:
-            self._download_nltk_resources()
     
-    def _download_nltk_resources(self):
-        """Download required NLTK resources."""
+    def _ensure_nltk_resources(self):
+        """Downloads required NLTK resources ('wordnet', 'omw-1.4') if not found."""
+        required_resources = ['wordnet', 'omw-1.4'] 
         try:
-            nltk.download('punkt', quiet=True)
-            nltk.download('wordnet', quiet=True)
-            # No need to download punkt_tab, it's not a standard resource
-            self.logger.info("NLTK resources downloaded successfully")
+            for resource in required_resources:
+                try:
+                    # Use nltk.data.find to check without raising error on first miss
+                    nltk.data.find(f'corpora/{resource}')
+                    logger.debug(f"NLTK resource '{resource}' found.")
+                except LookupError:
+                    logger.info(f"NLTK resource '{resource}' not found. Attempting download...")
+                    # Download the specific resource quietly
+                    nltk.download(resource, quiet=True)
+                    logger.info(f"NLTK resource '{resource}' downloaded successfully.")
+            # Verify WordNet is loaded after download attempt
+            wordnet.ensure_loaded()
+            logger.debug("Required NLTK resources are available and WordNet is loaded.")
         except Exception as e:
-            self.logger.warning(f"Failed to download NLTK resources: {str(e)}")
+            logger.error(f"Failed to download or verify required NLTK resources: {e}")
+            # If resources fail, simplification might not work, but don't crash init
     
     def _get_synonyms(self, word: str) -> List[str]:
         """Get synonyms for a word from WordNet.
@@ -91,10 +105,6 @@ class WordNetSimplifier:
         if not word.isalpha():
             return False
             
-        # Skip capitalized words (names, proper nouns)
-        if word[0].isupper() and word[1:].islower():
-            return False
-            
         return True
     
     def simplify(self, text: str) -> str:
@@ -110,39 +120,68 @@ class WordNetSimplifier:
             return text
             
         try:
-            # Simple word tokenization without relying on nltk tokenizers
-            # Split by whitespace and punctuation
-            words = re.findall(r'\b\w+\b', text)
-            simplified_words = []
+            # Check if WordNet is actually available before processing
+            wordnet.ensure_loaded()
+            # wordnet.synsets('test') # Quick check - avoid unnecessary calls
             
-            for word in words:
-                if self._is_complex_word(word):
-                    synonyms = self._get_synonyms(word.lower())
+            # Split text while preserving delimiters (whitespace, punctuation)
+            parts = re.split(r'(\W+)', text)
+            result_parts = []
+            
+            for part in parts:
+                if not part: # Skip empty strings from split
+                    continue
+                    
+                # Check if the part is a word (alphanumeric, basically what \w matches)
+                is_word = part.isalnum() # A simple check, might need refinement
+                                         # Or use re.match(r'\w+$', part)
+                
+                if is_word and self._is_complex_word(part):
+                    # Lemmatize the word before looking for synonyms
+                    lemmatized_word = self.lemmatizer.lemmatize(part.lower())
+                    # Also try lemmatizing as a verb, as default is noun
+                    if lemmatized_word == part.lower(): # If noun lemmatization didn't change it
+                        lemmatized_word = self.lemmatizer.lemmatize(part.lower(), pos='v')
+
+                    synonyms = self._get_synonyms(lemmatized_word)
+                    
+                    # If no synonyms found for lemmatized word, try original word
+                    if not synonyms and lemmatized_word != part.lower():
+                         synonyms = self._get_synonyms(part.lower())
+
                     if synonyms:
                         # Use the first (shortest) synonym
-                        simplified_words.append(synonyms[0])
+                        replacement = synonyms[0]
+                        # Preserve original capitalization
+                        if part.istitle(): # Handle title case e.g. 'Utilizing' -> 'Use'
+                            replacement = replacement.title()
+                        elif part[0].isupper(): # Handle sentence start or other capitalized
+                           replacement = replacement[0].upper() + replacement[1:]
+                           
+                        result_parts.append(replacement)
                     else:
-                        simplified_words.append(word)
+                        result_parts.append(part) # No synonym found, keep original
                 else:
-                    simplified_words.append(word)
+                    # Keep original part (either non-complex word or delimiter)
+                    result_parts.append(part)
             
-            # Reconstruct text while preserving punctuation and spacing
-            simplified_text = text
-            
-            # Replace words with their simplified versions, preserving case
-            for i, original_word in enumerate(words):
-                if i < len(simplified_words) and original_word.lower() != simplified_words[i].lower():
-                    # Preserve capitalization
-                    replacement = simplified_words[i]
-                    if original_word[0].isupper():
-                        replacement = replacement[0].upper() + replacement[1:]
-                    
-                    # Replace whole word with word boundaries
-                    pattern = r'\b' + re.escape(original_word) + r'\b'
-                    simplified_text = re.sub(pattern, replacement, simplified_text, count=1)
-            
-            return simplified_text
+            return "".join(result_parts)
             
         except Exception as e:
-            self.logger.warning(f"Error in vocabulary simplification: {str(e)}")
-            return text  # Return original text on error 
+            logger.warning(f"Error in vocabulary simplification: {str(e)}")
+            return text  # Return original text on error
+
+# Example usage (optional, for testing)
+if __name__ == '__main__':
+    simplifier = WordNetSimplifier(min_word_length=5)
+    
+    test_text = "This is a demonstration of the vocabulary simplification utility. It endeavours to transmute intricate expressions into simpler alternatives."
+    
+    simplified_text = simplifier.simplify(test_text)
+    print(f"Original: {test_text}")
+    print(f"Simplified: {simplified_text}")
+    
+    test_text_2 = "Utilizing complex methodologies necessitates careful deliberation."
+    simplified_text_2 = simplifier.simplify(test_text_2)
+    print(f"Original: {test_text_2}")
+    print(f"Simplified: {simplified_text_2}") 

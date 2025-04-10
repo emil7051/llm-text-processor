@@ -28,18 +28,15 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
         log_level: Logging level as string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Optional path to log file
     """
-    # --- TEMPORARY DEBUG --- Force DEBUG level for testing
-    level = logging.DEBUG 
-    # # Convert string level to logging level
-    # level_map = {
-    #     'DEBUG': logging.DEBUG,
-    #     'INFO': logging.INFO,
-    #     'WARNING': logging.WARNING,
-    #     'ERROR': logging.ERROR,
-    #     'CRITICAL': logging.CRITICAL
-    # }
-    # level = level_map.get(log_level.upper(), logging.INFO)
-    # --- END TEMPORARY DEBUG ---
+    # Convert string level to logging level
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL
+    }
+    level = level_map.get(log_level.upper(), logging.WARNING)
     
     # Set up root logger
     root_logger = logging.getLogger()
@@ -47,25 +44,26 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
     
     # Set specific (higher) log levels for noisy libraries
     logging.getLogger("pdfminer").setLevel(logging.WARNING)
-    # Add other libraries here if needed
-    # logging.getLogger("another_library").setLevel(logging.INFO)
-
+    logging.getLogger("textcleaner.utils.content_cleaning").setLevel(logging.WARNING)
+    logging.getLogger("textcleaner.processors").setLevel(logging.WARNING)
+    
     # Remove any existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
     # Create the filter instance
-    suppress_filter = SuppressDebugFilter(names_to_suppress=['pdfminer'])
+    suppress_filter = SuppressDebugFilter(names_to_suppress=[
+        'pdfminer', 
+        'textcleaner.utils.content_cleaning',
+        'textcleaner.processors'
+    ])
 
     # Create and add console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    # Create simplified formatter
+    formatter = logging.Formatter('%(message)s')
     console_handler.setFormatter(formatter)
     
     # Add the filter to the console handler
@@ -82,10 +80,14 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
             if not log_path.parent.exists():
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 
-            # Create file handler
+            # Create file handler with detailed format for the log file
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(level)
-            file_handler.setFormatter(formatter)
+            detailed_formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            file_handler.setFormatter(detailed_formatter)
             
             # Add the filter to the file handler
             file_handler.addFilter(suppress_filter)
@@ -96,26 +98,6 @@ def configure_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
             logging.error(f"Failed to create log file: {e}")
 
 
-def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
-    """Get a logger with the specified name and level.
-    
-    Ensures the logger exists and sets its level, but does not add handlers.
-    Handlers should be configured globally on the root logger.
-    
-    Args:
-        name: Name of the logger
-        level: Logging level (if None, uses the root logger's level)
-    
-    Returns:
-        Logger instance
-    """
-    logger = logging.getLogger(name)
-    
-    # If a specific level is provided, set it.
-    # Otherwise, it will inherit the level from the root logger.
-    if level is not None:
-        logger.setLevel(level)
-    
-    # Do not add handlers here; let messages propagate to the root logger's handlers.
-    
-    return logger
+def get_logger(name: str) -> logging.Logger:
+    """Get a logger with the given name."""
+    return logging.getLogger(name)

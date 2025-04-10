@@ -15,86 +15,63 @@ This tool converts files from various formats (PDF, Office documents, web conten
 
 ## Features
 
-- **Expanded Format Support**: Now with enhanced support for HTML, XML, Markdown, and plain text files in addition to PDFs and Office documents
-- **HTML/XML Processing**: Intelligent extraction from HTML/XML with structure preservation and automatic cleaning of scripts, styles, and comments
-- **Markdown Handling**: Process Markdown files with frontmatter extraction and preservation of formatting
-- **Intelligent Cleaning**: Removes headers, footers, boilerplate content, and redundant information
-- **Structure Preservation**: Maintains document hierarchy, lists, tables, and other semantic elements
-- **Comprehensive Logging**: Detailed logging throughout the application with configurable log levels
-- **Configurable Processing**: Adjustable cleaning levels from minimal to aggressive
-- **Multiple Output Formats**: Export as plain text, Markdown, structured JSON, or CSV
-- **Batch Processing**: Process entire directories of files with consistent settings
-- **Performance Metrics**: Track token reduction and processing efficiency
-- **Docker Support**: Run in a consistent environment across platforms
-- **Python 3.9+ Compatible**: Works with a wide range of Python environments
+- **Wide Format Support:** Converts PDF, DOCX, XLSX, PPTX, HTML, TXT, CSV, MD and more.
+- **Intelligent Cleaning:** Removes headers/footers, page numbers, boilerplate text, duplicate content.
+- **Structure Preservation:** Maintains headings, lists, tables, code blocks, and links where possible.
+- **Content Optimization:** 
+    - Simplifies citations and URLs.
+    - Abbreviates common terms and domain-specific jargon (configurable).
+    - Simplifies complex vocabulary using WordNet (default, requires NLTK data download on first run).
+    - Condenses repetitive patterns and removes redundant phrases.
+    - Optimizes line length (configurable).
+- **Multiple Output Formats:** Generate clean Markdown, Plain Text, JSON, or CSV.
+- **Metadata Extraction:** Includes relevant metadata (page count, author, etc.) in output.
+- **Token Estimation:** Provides estimated token counts using `tiktoken`.
+- **Configuration Presets:** Offers presets (`minimal`, `standard`, `llm_optimal`) for common use cases.
+- **Parallel Processing:** Speeds up processing of multiple files.
 
 ## Installation
-
-### Using Homebrew (macOS)
-
-Install with the snappier name `textcleaner`:
-
-```bash
-# Add the tap
-brew tap emil7051/textcleaner https://github.com/emil7051/textcleaner
-
-# Install
-brew install textcleaner
-
-# Use the tool with the simple command
-textcleaner process myfile.pdf
-```
-
-### Using pip
 
 ```bash
 pip install textcleaner
 ```
 
-### Using Docker
+This installs the core package with support for all standard formats (PDF, Office, HTML, etc.) and features, including vocabulary simplification.
+
+**NLTK Data:** The first time you run the tool with vocabulary simplification enabled (which is the default), it will attempt to automatically download required NLTK data packages (`wordnet`, `omw-1.4`) if they are not found. This requires an internet connection.
+
+**Development Installation:**
 
 ```bash
-# Pull the Docker image
-docker pull your-username/textcleaner:latest
-
-# Or build from source
-docker build -t textcleaner .
-
-# Run using Docker
-docker run -v $(pwd)/input:/app/input -v $(pwd)/output:/app/output textcleaner process input/document.pdf output/document.md
-```
-
-### From Source
-
-```bash
-# Clone the repository
 git clone https://github.com/your-username/textcleaner.git
 cd textcleaner
-
-# Install dependencies
-pip install -e .
+pip install -e .[dev]
 ```
 
-## Quick Start
+This installs the package in editable mode along with development dependencies (pytest, ruff, etc.).
 
-```python
-from textcleaner import TextProcessor
+## Core Dependencies
 
-# Create processor with default settings
-processor = TextProcessor()
+- `pypdf` & `pdfminer.six` (for PDF processing)
+- `python-docx` (for DOCX)
+- `openpyxl` & `xlrd` (for XLSX, XLS)
+- `python-pptx` (for PPTX)
+- `beautifulsoup4` & `lxml` (for HTML)
+- `nltk` (for vocabulary simplification)
+- `pyyaml` (for configuration)
+- `click` (for CLI)
+- `tqdm` (for progress bars)
+- `pandas` (for CSV/Excel handling)
+- `requests` (for potential web requests)
+- `regex` (for advanced text matching)
+- `psutil` (for system utilities)
+- `tiktoken` (for token estimation)
+- `markdown-it-py` (for Markdown parsing -> Plain Text/CSV)
 
-# Process a single file
-result = processor.process_file("document.pdf", output_format="markdown")
-print(f"Output saved to: {result.output_path}")
-print(f"Token reduction: {result.metrics.token_reduction_percent}%")
+## Basic Usage
 
-# Process HTML content
-result = processor.process_file("webpage.html", output_format="markdown")
-print(f"Extracted {result.metrics.get('raw_character_count', 0)} characters")
-
-# Process a directory containing mixed file types
-results = processor.process_directory("documents/", output_format="markdown")
-print(f"Processed {len(results)} files")
+```bash
+textcleaner process <input_path> -o <output_dir> --format markdown
 ```
 
 ## Command Line Usage
@@ -219,3 +196,29 @@ The codebase has been refactored to improve organization and maintainability:
    - Updated test runner script for simplicity
    - Improved documentation for tests
    - Added READMEs to explain directory organization
+
+### Configuration File
+
+You can customize the processing behavior extensively using a `config.yaml` file. Create one using:
+
+```bash
+textcleaner generate-config > my_config.yaml
+```
+
+Then edit `my_config.yaml`. To use it:
+
+```bash
+textcleaner process <input_path> -c my_config.yaml
+```
+
+Key configuration sections in `default_config.yaml` (generated or found in `src/textcleaner/config`):
+
+- **`processors.content_cleaner`**: Flags to control basic cleaning steps (headers, whitespace, boilerplate, duplicates, footnotes).
+- **`processors.content_optimizer`**: Flags for optimization steps.
+    - `simplify_vocabulary`: Default `true`. Controls WordNet based simplification.
+    - `abbreviate_common_terms`, `domain_abbreviations`, `simplify_citations`, `simplify_urls`, `condense_repetitive_patterns`, `remove_redundant_phrases`, `remove_excessive_punctuation`, `max_line_length`.
+- **`output`**: Controls output format defaults, metadata inclusion.
+- **`formats`**: Fine-tune extraction for specific input types (PDF, Office, Web).
+- **`metrics`**: Control logging, reporting, token estimation.
+
+(Note: Temporal optimization settings like `optimize_temporal` and `use_stanford_nlp` have been removed.)

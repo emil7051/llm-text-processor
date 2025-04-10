@@ -37,132 +37,75 @@ class ParallelResult(Generic[T, R]):
 
 
 class ProgressTracker:
-    """Tracks progress of parallel processing tasks."""
+    """Track progress of parallel tasks with periodic updates."""
     
     def __init__(self, total_items: int, update_interval: float = 0.5):
-        """Initialize progress tracker.
+        """Initialize the progress tracker.
         
         Args:
             total_items: Total number of items to process
             update_interval: How often to update progress (in seconds)
         """
-        self.logger = get_logger(__name__)
         self.total = total_items
+        self.started = 0
         self.completed = 0
+        self.successful = 0
         self.failed = 0
-        self.in_progress = 0
         self.update_interval = update_interval
-        self.start_time = time.time()
-        self.last_update_time = 0
-        self.lock = threading.Lock()
+        self.start_time = 0.0
+        self._lock = threading.Lock()
+        self._thread = None
         self._stop_event = threading.Event()
-        self._progress_thread = None
-        self.estimated_time_remaining = None
-        self.callbacks = []
-    
-    def start(self):
-        """Start the progress tracker."""
-        if self._progress_thread is None and self.total > 0:
-            self._stop_event.clear()
-            self._progress_thread = threading.Thread(target=self._update_progress)
-            self._progress_thread.daemon = True
-            self._progress_thread.start()
-    
-    def stop(self):
-        """Stop the progress tracker."""
-        if self._progress_thread is not None:
-            self._stop_event.set()
-            self._progress_thread.join(timeout=1.0)
-            self._progress_thread = None
-    
-    def add_callback(self, callback: Callable[[Dict[str, Any]], None]):
-        """Add a callback function to be called on progress updates.
         
-        Args:
-            callback: Function that takes a progress dictionary as input
-        """
-        self.callbacks.append(callback)
-    
+    def start(self):
+        """Start tracking progress."""
+        self.start_time = time.time()
+        self._thread = threading.Thread(target=self._update_progress, daemon=True)
+        self._thread.start()
+        
+    def stop(self):
+        """Stop tracking progress."""
+        if self._thread and self._thread.is_alive():
+            self._stop_event.set()
+            self._thread.join(timeout=1.0)
+            
     def item_started(self):
         """Mark an item as started."""
-        with self.lock:
-            self.in_progress += 1
-    
+        with self._lock:
+            self.started += 1
+            
     def item_completed(self, success: bool = True):
-        """Mark an item as completed.
-        
-        Args:
-            success: Whether the item was processed successfully
-        """
-        with self.lock:
-            self.in_progress -= 1
+        """Mark an item as completed."""
+        with self._lock:
+            self.completed += 1
             if success:
-                self.completed += 1
+                self.successful += 1
             else:
                 self.failed += 1
-    
-    def get_progress(self) -> Dict[str, Any]:
-        """Get the current progress information.
-        
-        Returns:
-            Dictionary with progress information
-        """
-        with self.lock:
-            elapsed = time.time() - self.start_time
             
-            # Calculate processing rate (items per second)
-            rate = (self.completed + self.failed) / max(elapsed, 0.001)
-            
-            # Estimate time remaining
-            remaining_items = self.total - (self.completed + self.failed)
-            estimated_seconds = remaining_items / max(rate, 0.001) if rate > 0 else 0
-            
-            # Format time remaining
-            if estimated_seconds < 60:
-                estimated_time = f"{estimated_seconds:.1f} seconds"
-            elif estimated_seconds < 3600:
-                estimated_time = f"{estimated_seconds/60:.1f} minutes"
-            else:
-                estimated_time = f"{estimated_seconds/3600:.1f} hours"
-            
-            return {
-                "total": self.total,
-                "completed": self.completed,
-                "failed": self.failed,
-                "in_progress": self.in_progress,
-                "percent_complete": (self.completed + self.failed) / max(self.total, 1) * 100,
-                "elapsed_seconds": elapsed,
-                "items_per_second": rate,
-                "estimated_time_remaining": estimated_time,
-                "success_rate": self.completed / max(self.completed + self.failed, 1) * 100
-            }
-    
     def _update_progress(self):
-        """Update and log progress at regular intervals."""
+        """Update progress periodically."""
+        # Minimal progress updates - will mostly be disabled in our implementation
+        previous_completed = 0
+        
         while not self._stop_event.is_set():
-            now = time.time()
-            if now - self.last_update_time >= self.update_interval:
-                progress = self.get_progress()
+            with self._lock:
+                started = self.started
+                completed = self.completed
+                successful = self.successful
+                failed = self.failed
                 
-                # Log progress
-                self.logger.info(
-                    f"Progress: {progress['percent_complete']:.1f}% "
-                    f"({progress['completed']} completed, {progress['failed']} failed, "
-                    f"{progress['in_progress']} in progress) - "
-                    f"ETA: {progress['estimated_time_remaining']}"
-                )
+            # Only update if something changed
+            if completed > previous_completed:
+                previous_completed = completed
                 
-                # Call any registered callbacks
-                for callback in self.callbacks:
-                    try:
-                        callback(progress)
-                    except Exception as e:
-                        self.logger.error(f"Error in progress callback: {e}")
+                # Minimal progress display - don't print anything here as we handle it elsewhere
                 
-                self.last_update_time = now
+            # Sleep for the update interval
+            self._stop_event.wait(self.update_interval)
             
-            # Sleep briefly
-            time.sleep(0.1)
+        # Final update when finished
+        # Again, don't print anything here as we handle it elsewhere
 
 
 class ResourceMonitor:
@@ -587,6 +530,13 @@ class ParallelProcessor:
                 memory_change = 0
             
             # Create success result with enhanced metadata
+            # For ProcessingResult objects, ensure metrics are preserved
+            if hasattr(result, 'metrics') and not result.metrics and processing_time > 0:
+                # If metrics are empty but we have timing info, add basic metrics
+                if not hasattr(result, 'metrics'):
+                    result.metrics = {}
+                result.metrics['processing_time_seconds'] = processing_time
+            
             return ParallelResult(
                 task_id=task_id,
                 result=result,

@@ -4,7 +4,7 @@ A versatile system for converting various file formats into clean,
 structured text optimized for Large Language Models (LLMs).
 """
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 # Import essential components
 from textcleaner.config.config_manager import ConfigManager

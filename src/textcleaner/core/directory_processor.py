@@ -143,8 +143,8 @@ class DirectoryProcessor:
         output_format: Optional[str] = None,
         recursive: bool = True,
         file_extensions: Optional[List[str]] = None,
-        quiet_mode: bool = False,  # Add quiet_mode
-        no_progress: bool = False, # Add no_progress
+        quiet_mode: bool = False,
+        no_progress: bool = False,
     ) -> List[ProcessingResult]:
         """Process all supported files in a directory sequentially."""
         self.logger.info(f"Starting sequential processing for directory: {input_dir}")
@@ -162,43 +162,57 @@ class DirectoryProcessor:
             self.logger.warning(f"No files to process in {input_dir_p}")
             return []
 
-        self.logger.info(f"Found {total_files} files to process sequentially in {input_dir_p}")
-        self.logger.info(f"Output directory: {output_dir_p}")
+        # Simpler logging for directory processing start
+        if not quiet_mode:
+            print(f"Processing {total_files} files from: {input_dir_p}")
 
         results = []
         successful = 0
         failed = 0
         
-        # Setup progress bar, disabling if quiet or no_progress
-        disable_pbar = quiet_mode or no_progress
-        pbar_desc = f"Processing {input_dir_p.name}"
-        with tqdm(total=total_files, desc=pbar_desc, disable=disable_pbar, unit="file") as pbar:
-            for file_path in files_to_process:
-                self.logger.info(f"Processing file {pbar.n + 1}/{total_files}: {file_path.name}")
-                try:
-                    output_file = self._calculate_relative_output_path(
-                        file_path, input_dir_p, output_dir_p, output_format
-                    )
-                    # Use the single file processor
-                    result = self.single_file_processor.process_file(file_path, output_file, output_format)
-                    if result.success:
-                        successful += 1
-                    else:
-                        failed += 1
-                        self.logger.error(f"Failed: {file_path.name} - {result.error}")
-                    results.append(result)
-                except Exception as e:
-                    self.logger.error(f"Error processing file {file_path.name}: {e}")
-                    results.append(ProcessingResult(
-                        input_path=file_path, 
-                        success=False, 
-                        error=f"Unexpected error: {str(e)}"
-                    ))
+        # Process files without tqdm progress bar
+        for i, file_path in enumerate(files_to_process):
+            current_file_num = i + 1
+            if not quiet_mode and not no_progress:
+                progress_pct = int((current_file_num / total_files) * 100)
+                print(f"Processing \"{file_path.name}\" ({current_file_num}/{total_files})")
+                print(f"----------{progress_pct}%")
+                
+            try:
+                output_file = self._calculate_relative_output_path(
+                    file_path, input_dir_p, output_dir_p, output_format
+                )
+                # Use the single file processor
+                result = self.single_file_processor.process_file(file_path, output_file, output_format)
+                if result.success:
+                    successful += 1
+                else:
                     failed += 1
-                finally:
-                    pbar.update(1) # Ensure progress bar updates even on error
+                    self.logger.error(f"Failed: {file_path.name} - {result.error}")
+                results.append(result)
+            except Exception as e:
+                self.logger.error(f"Error processing file {file_path.name}: {e}")
+                results.append(ProcessingResult(
+                    input_path=file_path, 
+                    success=False, 
+                    error=f"Unexpected error: {str(e)}"
+                ))
+                failed += 1
 
+        # Calculate token reduction statistics if available
+        if successful > 0 and not quiet_mode:
+            # Don't print token stats here - they will be displayed by the CLI command
+            # Just calculate them for internal use if needed
+            total_original_tokens = sum(r.metrics.get("original_token_estimate", 0) or r.metrics.get("original_tokens", 0) for r in results if r.success)
+            total_processed_tokens = sum(r.metrics.get("processed_token_estimate", 0) or r.metrics.get("processed_tokens", 0) for r in results if r.success)
+            if total_original_tokens > 0:
+                reduction_percent = ((total_original_tokens - total_processed_tokens) / total_original_tokens) * 100
+                # Remove the print statement that duplicates the CLI output
+                # print(f"\nToken reduction: {total_original_tokens:,} → {total_processed_tokens:,} ({reduction_percent:.1f}%)")
+
+        # Log completion message
         self.logger.info(f"Sequential directory processing complete: {successful} successful, {failed} failed")
+        
         return results
 
     def process_directory_parallel(
@@ -209,8 +223,8 @@ class DirectoryProcessor:
         recursive: bool = True,
         file_extensions: Optional[List[str]] = None,
         max_workers: Optional[int] = None,
-        quiet_mode: bool = False,  # Add quiet_mode
-        no_progress: bool = False, # Add no_progress
+        quiet_mode: bool = False,
+        no_progress: bool = False,
     ) -> List[ProcessingResult]:
         """Process all supported files in a directory using parallel processing."""
         with performance_monitor.performance_context("process_directory_parallel"):
@@ -229,8 +243,9 @@ class DirectoryProcessor:
                 self.logger.warning(f"No files to process in {input_dir_p}")
                 return []
 
-            self.logger.info(f"Found {total_files} files to process in parallel (max_workers={max_workers or 'default'}) in {input_dir_p}")
-            self.logger.info(f"Output directory: {output_dir_p}")
+            # Simpler logging for directory processing start
+            if not quiet_mode:
+                print(f"Processing {total_files} files from: {input_dir_p}")
 
             processor = self.parallel
             # If specific max_workers are requested, create a new processor instance for this run
@@ -259,19 +274,22 @@ class DirectoryProcessor:
                 # Define the function to be executed in parallel
                 def process_single_task(task_data: Tuple[Path, Path, str]) -> ProcessingResult:
                     file_path, output_path, fmt = task_data
-                    # Ensure each worker gets a fresh security context if needed, or share
-                    # Assuming self.single_file_processor is safe to use across threads/processes
-                    # Or create a new processor instance per worker if necessary
+                    # Custom progress output for each file
+                    if not quiet_mode and not no_progress:
+                        # Get current task index
+                        task_idx = tasks.index(task_data) + 1
+                        progress_pct = int((task_idx / total_files) * 100)
+                        print(f"Processing \"{file_path.name}\" ({task_idx}/{total_files})")
+                        print(f"----------{progress_pct}%")
                     return self.single_file_processor.process_file(file_path, output_path, fmt)
 
                 # Execute tasks in parallel using the ParallelProcessor instance
-                # Replace run_parallel with process_items
                 parallel_results: List[ParallelResult[Tuple[Path, Path, str], ProcessingResult]] = processor.process_items(
                     items=tasks,
                     process_func=process_single_task,
                     task_ids=task_ids,
                     use_processes=False, # Set explicitly to False (use threads)
-                    show_progress=True # Assuming progress should be shown
+                    show_progress=False  # We're handling our own progress display
                 )
 
                 # Convert ParallelResult back to ProcessingResult
@@ -294,10 +312,20 @@ class DirectoryProcessor:
 
             except Exception as e:
                 self.logger.error(f"Parallel execution failed: {e}", exc_info=True)
-                # Return empty list or re-raise depending on desired error handling
-                # Now 'results' is defined (as potentially empty list)
 
             successful = len([r for r in results if r.success])
             failed = len(results) - successful
+            
+            # Calculate token reduction statistics if available
+            if successful > 0 and not quiet_mode:
+                total_original_tokens = sum(r.metrics.get("original_token_estimate", 0) or r.metrics.get("original_tokens", 0) for r in results if r.success)
+                total_processed_tokens = sum(r.metrics.get("processed_token_estimate", 0) or r.metrics.get("processed_tokens", 0) for r in results if r.success)
+                if total_original_tokens > 0:
+                    reduction_percent = ((total_original_tokens - total_processed_tokens) / total_original_tokens) * 100
+                    # Remove the print statement that duplicates the CLI output
+                    # print(f"\nToken reduction: {total_original_tokens:,} → {total_processed_tokens:,} ({reduction_percent:.1f}%)")
+
+            # Log completion message
             self.logger.info(f"Parallel directory processing complete: {successful} successful, {failed} failed")
+            
             return results
