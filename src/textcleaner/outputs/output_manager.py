@@ -15,7 +15,7 @@ except ImportError:
 
 # Add BeautifulSoup import
 try:
-    from bs4 import BeautifulSoup, NavigableString, Tag # Add NavigableString, Tag
+    from bs4 import BeautifulSoup, NavigableString, Tag
     _bs4_available = True
 except ImportError:
     _bs4_available = False
